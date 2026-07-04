@@ -578,7 +578,7 @@ export default function HomeScreen() {
 
           <View style={styles.heroContent}>
             <ThemedText type="smallBold" themeColor="textSecondary">
-              MoeKoeMusic Mobile
+              MoeKoe
             </ThemedText>
             <ThemedText type="title" style={styles.heroTitle}>
               {heroBanner?.title || '今天想听点什么'}

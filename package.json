@@ -1,7 +1,8 @@
 {
-  "name": "moekoemusic-mobile",
+  "name": "moekoe",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "1.6.7",
+  "description": "MoeKoe mobile app",
   "dependencies": {
     "@expo/ui": "~57.0.3",
     "buffer": "^6.0.3",
@@ -35,7 +36,6 @@
   },
   "scripts": {
     "start": "expo start",
-    "reset-project": "node ./scripts/reset-project.js",
     "generate:mobile-api": "node ./scripts/generate-mobile-api-entry.mjs",
     "android": "expo start --android",
     "ios": "expo start --ios",

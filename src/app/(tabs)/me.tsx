@@ -51,24 +51,14 @@ function pickText(...values: unknown[]) {
 
 function readApiMessage(body: unknown) {
   const data = toRecord(body);
-  return pickText(
-    data.error_msg,
-    data.errmsg,
-    data.msg,
-    data.message,
-    data.error,
-    data.info
-  );
+  return pickText(data.error_msg, data.errmsg, data.msg, data.message, data.error, data.info);
 }
 
 function isApiSuccess(body: unknown) {
   const data = toRecord(body);
-
-  if (data.status === 1 || data.code === 200 || data.errcode === 0 || data.error_code === 0) {
-    return true;
-  }
-
-  return false;
+  return Boolean(
+    data.status === 1 || data.code === 200 || data.errcode === 0 || data.error_code === 0
+  );
 }
 
 function isValidPhone(value: string) {
@@ -97,12 +87,22 @@ function Button({
   loading?: boolean;
 }) {
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => pressed && !disabled && styles.pressed}>
-      <View style={[styles.button, secondary ? styles.buttonSecondary : styles.buttonPrimary, disabled && styles.buttonDisabled]}>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => pressed && !disabled && styles.pressed}>
+      <View
+        style={[
+          styles.button,
+          secondary ? styles.buttonSecondary : styles.buttonPrimary,
+          disabled && styles.buttonDisabled,
+        ]}>
         {loading ? (
           <ActivityIndicator size="small" color={secondary ? '#111827' : '#FFFFFF'} />
         ) : (
-          <ThemedText type="smallBold" style={secondary ? styles.buttonSecondaryText : styles.buttonPrimaryText}>
+          <ThemedText
+            type="smallBold"
+            style={secondary ? styles.buttonSecondaryText : styles.buttonPrimaryText}>
             {label}
           </ThemedText>
         )}
@@ -190,10 +190,9 @@ export default function MeScreen() {
     try {
       await bootstrapMobileApi();
       const response = await mobileApi.captcha_sent({ mobile });
-      const body = response.body;
 
-      if (!isApiSuccess(body)) {
-        throw new Error(readApiMessage(body) || '验证码发送失败');
+      if (!isApiSuccess(response.body)) {
+        throw new Error(readApiMessage(response.body) || '验证码发送失败');
       }
 
       startTransition(() => {
@@ -244,10 +243,9 @@ export default function MeScreen() {
     try {
       await bootstrapMobileApi();
       const response = await mobileApi.login_cellphone({ mobile, code: verifyCode });
-      const body = response.body;
 
-      if (!isApiSuccess(body)) {
-        throw new Error(readApiMessage(body) || '登录失败');
+      if (!isApiSuccess(response.body)) {
+        throw new Error(readApiMessage(response.body) || '登录失败');
       }
 
       startTransition(() => {
@@ -255,7 +253,7 @@ export default function MeScreen() {
           ...current,
           loggingIn: false,
           session: getApiSession(),
-          message: `已通过验证码登录 ${maskPhone(mobile)}。`,
+          message: `已登录 ${maskPhone(mobile)}。`,
         }));
         setCode('');
       });
@@ -301,10 +299,10 @@ export default function MeScreen() {
             我的
           </ThemedText>
           <ThemedText type="title" style={styles.headerTitle}>
-            账号与登录
+            账号中心
           </ThemedText>
           <ThemedText themeColor="textSecondary">
-            这一页先只接手机号验证码登录，其他账号体系和会员入口后面再补。
+            使用手机号验证码登录 MoeKoe，登录状态会和应用内 API 会话一起保存在本机。
           </ThemedText>
         </View>
 
@@ -312,19 +310,21 @@ export default function MeScreen() {
           <View style={styles.avatarWrap}>
             <View style={[styles.avatarCore, { backgroundColor: theme.backgroundSelected }]}>
               <ThemedText type="subtitle" style={styles.avatarText}>
-                {isLoggedIn ? 'M' : '未'}
+                {isLoggedIn ? 'M' : '我'}
               </ThemedText>
             </View>
           </View>
 
           <View style={styles.accountMeta}>
             <ThemedText type="subtitle" style={styles.accountTitle}>
-              {isLoggedIn ? '当前账号已登录' : '当前还未登录'}
+              {isLoggedIn ? '当前账号已登录' : '登录后可同步个人状态'}
             </ThemedText>
             <ThemedText themeColor="textSecondary">
               {isLoggedIn
-                ? `用户 ID ${state.session.userid} · ${state.session.vip_type === '0' ? '普通用户' : 'VIP 账号'}`
-                : '登录成功后，API 会话会自动保存在设备本地。'}
+                ? `用户 ID ${state.session.userid} · ${
+                    state.session.vip_type === '0' ? '普通账号' : 'VIP 账号'
+                  }`
+                : '登录成功后，推荐、收藏和个人数据请求会自动带上账号会话。'}
             </ThemedText>
           </View>
 
@@ -336,9 +336,9 @@ export default function MeScreen() {
               </ThemedText>
             </View>
             <View style={[styles.statChip, { backgroundColor: theme.background }]}>
-              <ThemedText type="smallBold">{state.session.token ? '已写入' : '未写入'}</ThemedText>
+              <ThemedText type="smallBold">{state.session.token ? '已登录' : '未登录'}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                登录令牌
+                账号状态
               </ThemedText>
             </View>
           </View>
@@ -354,10 +354,10 @@ export default function MeScreen() {
         <ThemedView type="backgroundElement" style={styles.formCard}>
           <View style={styles.formHeader}>
             <ThemedText type="subtitle" style={styles.formTitle}>
-              {isLoggedIn ? '切换手机号' : '手机号验证码登录'}
+              手机号验证码登录
             </ThemedText>
             <ThemedText themeColor="textSecondary">
-              发送验证码后直接走 `login_cellphone`，不会额外要求 URL 配置。
+              验证码发送和登录都直接调用应用内 API，不需要额外配置接口地址。
             </ThemedText>
           </View>
 
@@ -402,7 +402,11 @@ export default function MeScreen() {
               />
               <Button
                 label={
-                  state.countdown > 0 ? `${state.countdown}s 后重发` : state.sendingCode ? '发送中' : '获取验证码'
+                  state.countdown > 0
+                    ? `${state.countdown}s 后重发`
+                    : state.sendingCode
+                      ? '发送中'
+                      : '获取验证码'
                 }
                 onPress={() => void handleSendCode()}
                 disabled={state.countdown > 0 || state.sendingCode || state.loggingIn}
@@ -414,16 +418,18 @@ export default function MeScreen() {
 
           <View style={styles.noticeBlock}>
             <ThemedText type="smallBold">
-              {maskedPhone && isValidPhone(phone) ? `验证码将发送到 ${maskedPhone}` : '短信验证码由酷狗接口直接下发'}
+              {maskedPhone && isValidPhone(phone)
+                ? `验证码将发送到 ${maskedPhone}`
+                : '验证码由酷狗登录接口直接下发'}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              {state.message || '登录成功后，这个 App 内部的 API 会话会自动更新。'}
+              {state.message || '登录成功后，MoeKoe 会自动更新当前账号会话。'}
             </ThemedText>
           </View>
 
           <View style={styles.formActions}>
             <Button
-              label={isLoggedIn ? '切换为这个手机号' : '立即登录'}
+              label={isLoggedIn ? '切换到这个手机号' : '立即登录'}
               onPress={() => void handleLogin()}
               disabled={state.loggingIn || state.loading}
               loading={state.loggingIn}
@@ -438,9 +444,9 @@ export default function MeScreen() {
         </ThemedView>
 
         <ThemedView type="backgroundElement" style={styles.footnoteCard}>
-          <ThemedText type="smallBold">当前范围</ThemedText>
+          <ThemedText type="smallBold">登录说明</ThemedText>
           <ThemedText themeColor="textSecondary">
-            这一版只实现验证码登录。用户资料、歌单、收藏、会员中心和设置项暂时不接。
+            当前版本支持手机号验证码登录与本机会话管理，登录态会自动写入安全存储。
           </ThemedText>
         </ThemedView>
       </ScrollView>

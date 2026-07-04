@@ -44,12 +44,12 @@ export default function PlayerScreen() {
           <View style={[styles.blurOrbSmall, { backgroundColor: theme.backgroundSelected }]} />
 
           <ThemedText type="smallBold" themeColor="textSecondary">
-            歌词播放页
+            正在播放
           </ThemedText>
           <ThemedText type="subtitle" style={styles.title}>
             晴天
           </ThemedText>
-          <ThemedText themeColor="textSecondary">周杰伦 · 这里只先把 Tab 结构和页面骨架接好</ThemedText>
+          <ThemedText themeColor="textSecondary">周杰伦 · 单曲循环</ThemedText>
 
           <View style={styles.coverShell}>
             <Image
@@ -80,10 +80,8 @@ export default function PlayerScreen() {
           </View>
 
           <ThemedView style={[styles.lyricCard, { backgroundColor: theme.background }]}>
-            <ThemedText type="smallBold">歌词区域</ThemedText>
-            <ThemedText themeColor="textSecondary">
-              下一步接真实播放状态、滚动歌词和播放控制。
-            </ThemedText>
+            <ThemedText type="smallBold">歌词</ThemedText>
+            <ThemedText themeColor="textSecondary">歌词将在播放时同步显示。</ThemedText>
           </ThemedView>
         </ThemedView>
       </ScrollView>
