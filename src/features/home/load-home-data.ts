@@ -1,6 +1,7 @@
 import { fetchHotKeywords, type SearchKeyword } from '@/features/search/search-api';
 import type { PlayerTrack } from '@/features/player/types';
 import {
+  detectAudioQuality,
   formatApiError,
   pickNumber,
   pickStringLike,
@@ -83,6 +84,7 @@ function normalizeSong(record: Record<string, unknown>): HomeSong | null {
     albumAudioId: pickStringLike(record.album_audio_id, record.audio_id) || undefined,
     durationMs: normalizeDurationMs(record.time_length ?? record.timelength ?? record.timelen),
     vip: pickNumber(record.privilege) >= 10 || undefined,
+    quality: detectAudioQuality(record),
     note: formatSongNote(
       pickText(record.rec_copy_write, record.recommend_reason, record.publish_date)
     ),

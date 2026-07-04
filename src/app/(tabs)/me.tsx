@@ -3,7 +3,7 @@ import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { startTransition, useCallback, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
@@ -185,6 +185,14 @@ export default function MeScreen() {
     });
   }
 
+  const profile = state.loggedIn && state.profile ? state.profile : null;
+  const bannerUrl = profile?.backgroundUrl ?? null;
+  const [bannerFailed, setBannerFailed] = useState(false);
+
+  useEffect(() => {
+    setBannerFailed(false);
+  }, [bannerUrl]);
+
   return (
     <View flex={1} backgroundColor={palette.background}>
       <ScrollView
@@ -198,69 +206,100 @@ export default function MeScreen() {
             progressViewOffset={insets.top}
           />
         }
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + 14, paddingBottom: dockInset },
-        ]}>
-        <Text color={palette.text} fontSize={26} fontWeight="800" letterSpacing={0.3}>
-          我的
-        </Text>
-
-        {state.checking ? (
-          <YStack alignItems="center" paddingVertical={80}>
-            <Spinner size="large" color={palette.accent} />
-          </YStack>
-        ) : state.loggedIn && state.profile ? (
+        contentContainerStyle={{ paddingBottom: dockInset }}>
+        {profile ? (
           <>
+            {/* 沉浸式背景头图，穿透状态栏 */}
+            <View height={insets.top + 148} backgroundColor={palette.cardAlt}>
+              {bannerUrl && !bannerFailed ? (
+                <>
+                  <Image
+                    source={{ uri: bannerUrl }}
+                    style={StyleSheet.absoluteFill}
+                    contentFit="cover"
+                    transition={280}
+                    onError={() => setBannerFailed(true)}
+                  />
+                  <LinearGradient
+                    colors={['rgba(8, 8, 14, 0.22)', 'transparent', 'rgba(8, 8, 14, 0.28)']}
+                    locations={[0, 0.5, 1]}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </>
+              ) : (
+                <LinearGradient
+                  colors={[palette.gradientStart, palette.gradientEnd]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              )}
+            </View>
+
             <YStack
-              borderRadius={24}
-              overflow="hidden"
-              borderWidth={StyleSheet.hairlineWidth}
-              borderColor={palette.border}
-              backgroundColor={palette.card}>
-              <LinearGradient
-                colors={[palette.accentSoft, 'transparent']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <YStack padding={20} gap={16} backgroundColor="transparent">
-                <XStack alignItems="center" gap={16}>
-                  {state.profile.avatarUrl ? (
-                    <Image source={{ uri: state.profile.avatarUrl }} style={styles.avatar} contentFit="cover" />
-                  ) : (
-                    <Artwork uri={null} size={64} circle />
-                  )}
-                  <YStack flex={1} gap={5}>
-                    <XStack alignItems="center" gap={8}>
-                      <Text color={palette.text} fontSize={19} fontWeight="800" numberOfLines={1}>
-                        {state.profile.nickname}
-                      </Text>
-                      {state.profile.isVip ? (
-                        <Text
-                          color={palette.vip}
-                          backgroundColor={palette.vipSoft}
-                          fontSize={10}
-                          fontWeight="800"
-                          paddingHorizontal={7}
-                          paddingVertical={2.5}
-                          borderRadius={7}
-                          overflow="hidden">
-                          {state.profile.vipLabel}
-                        </Text>
-                      ) : null}
-                    </XStack>
-                    <Text color={palette.textTertiary} fontSize={12}>
-                      ID {state.profile.userid}
+              alignSelf="center"
+              width="100%"
+              maxWidth={MaxContentWidth}
+              paddingHorizontal={16}
+              gap={18}>
+              <YStack>
+                <XStack marginTop={-34} alignItems="flex-end" gap={12}>
+                  <View padding={3} borderRadius={999} backgroundColor={palette.background}>
+                    {profile.avatarUrl ? (
+                      <Image
+                        source={{ uri: profile.avatarUrl }}
+                        style={styles.avatar}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <Artwork uri={null} size={68} circle />
+                    )}
+                  </View>
+                  <XStack flex={1} alignItems="center" gap={8} paddingBottom={8}>
+                    <Text
+                      flexShrink={1}
+                      color={palette.text}
+                      fontSize={20}
+                      fontWeight="800"
+                      numberOfLines={1}>
+                      {profile.nickname}
                     </Text>
-                  </YStack>
+                    {profile.isVip ? (
+                      <Text
+                        color={palette.vip}
+                        backgroundColor={palette.vipSoft}
+                        fontSize={10}
+                        fontWeight="800"
+                        paddingHorizontal={7}
+                        paddingVertical={2.5}
+                        borderRadius={7}
+                        overflow="hidden">
+                        {profile.vipLabel}
+                      </Text>
+                    ) : null}
+                  </XStack>
                 </XStack>
 
-                <XStack gap={10}>
+                <YStack marginTop={8} gap={4}>
+                  <Text color={palette.textTertiary} fontSize={12}>
+                    ID {profile.userid}
+                  </Text>
+                  {profile.signature ? (
+                    <Text
+                      color={palette.textSecondary}
+                      fontSize={12.5}
+                      lineHeight={18}
+                      numberOfLines={2}>
+                      {profile.signature}
+                    </Text>
+                  ) : null}
+                </YStack>
+
+                <XStack gap={10} marginTop={14}>
                   {[
-                    { label: '关注', value: String(state.profile.follows) },
-                    { label: '粉丝', value: String(state.profile.fans) },
-                    { label: '听歌时长', value: formatListenTime(state.profile.listenMinutes) },
+                    { label: '关注', value: String(profile.follows) },
+                    { label: '粉丝', value: String(profile.fans) },
+                    { label: '听歌时长', value: formatListenTime(profile.listenMinutes) },
                   ].map((stat) => (
                     <YStack
                       key={stat.label}
@@ -269,7 +308,9 @@ export default function MeScreen() {
                       gap={3}
                       paddingVertical={12}
                       borderRadius={16}
-                      backgroundColor={palette.cardAlt}>
+                      backgroundColor={palette.card}
+                      borderWidth={StyleSheet.hairlineWidth}
+                      borderColor={palette.border}>
                       <Text color={palette.text} fontSize={15} fontWeight="700">
                         {stat.value}
                       </Text>
@@ -280,151 +321,168 @@ export default function MeScreen() {
                   ))}
                 </XStack>
               </YStack>
-            </YStack>
 
-            {state.error ? (
-              <XStack
-                alignItems="center"
-                gap={8}
-                paddingHorizontal={14}
-                paddingVertical={10}
-                borderRadius={14}
-                backgroundColor={palette.dangerSoft}>
-                <Ionicons name="alert-circle" size={15} color={palette.danger} />
-                <Text flex={1} color={palette.danger} fontSize={12.5}>
-                  {state.error}
-                </Text>
-              </XStack>
-            ) : null}
+              {state.error ? (
+                <XStack
+                  alignItems="center"
+                  gap={8}
+                  paddingHorizontal={14}
+                  paddingVertical={10}
+                  borderRadius={14}
+                  backgroundColor={palette.dangerSoft}>
+                  <Ionicons name="alert-circle" size={15} color={palette.danger} />
+                  <Text flex={1} color={palette.danger} fontSize={12.5}>
+                    {state.error}
+                  </Text>
+                </XStack>
+              ) : null}
 
-            {createdPlaylists.length ? (
-              <YStack gap={10}>
-                <SectionHeader title="我创建的歌单" />
-                <YStack
-                  backgroundColor={palette.card}
-                  borderRadius={20}
-                  borderWidth={StyleSheet.hairlineWidth}
-                  borderColor={palette.border}
-                  paddingVertical={6}
-                  paddingHorizontal={4}>
-                  {createdPlaylists.map((item) => (
-                    <PlaylistRow key={item.gid} item={item} onPress={() => openPlaylist(item)} />
-                  ))}
+              {createdPlaylists.length ? (
+                <YStack gap={10}>
+                  <SectionHeader title="我创建的歌单" />
+                  <YStack
+                    backgroundColor={palette.card}
+                    borderRadius={20}
+                    borderWidth={StyleSheet.hairlineWidth}
+                    borderColor={palette.border}
+                    paddingVertical={6}
+                    paddingHorizontal={4}>
+                    {createdPlaylists.map((item) => (
+                      <PlaylistRow key={item.gid} item={item} onPress={() => openPlaylist(item)} />
+                    ))}
+                  </YStack>
                 </YStack>
-              </YStack>
-            ) : null}
+              ) : null}
 
-            {collectedPlaylists.length ? (
-              <YStack gap={10}>
-                <SectionHeader title="收藏的歌单" />
-                <YStack
-                  backgroundColor={palette.card}
-                  borderRadius={20}
-                  borderWidth={StyleSheet.hairlineWidth}
-                  borderColor={palette.border}
-                  paddingVertical={6}
-                  paddingHorizontal={4}>
-                  {collectedPlaylists.map((item) => (
-                    <PlaylistRow key={item.gid} item={item} onPress={() => openPlaylist(item)} />
-                  ))}
+              {collectedPlaylists.length ? (
+                <YStack gap={10}>
+                  <SectionHeader title="收藏的歌单" />
+                  <YStack
+                    backgroundColor={palette.card}
+                    borderRadius={20}
+                    borderWidth={StyleSheet.hairlineWidth}
+                    borderColor={palette.border}
+                    paddingVertical={6}
+                    paddingHorizontal={4}>
+                    {collectedPlaylists.map((item) => (
+                      <PlaylistRow key={item.gid} item={item} onPress={() => openPlaylist(item)} />
+                    ))}
+                  </YStack>
                 </YStack>
-              </YStack>
-            ) : null}
+              ) : null}
 
-            <XStack
-              alignItems="center"
-              justifyContent="center"
-              height={48}
-              borderRadius={16}
-              backgroundColor={palette.card}
-              borderWidth={StyleSheet.hairlineWidth}
-              borderColor={palette.border}
-              transition="quickest"
-              pressStyle={{ opacity: 0.7 }}
-              onPress={confirmLogout}>
-              <Text color={palette.danger} fontSize={14.5} fontWeight="600">
-                退出登录
-              </Text>
-            </XStack>
-          </>
-        ) : (
-          <YStack
-            borderRadius={26}
-            overflow="hidden"
-            borderWidth={StyleSheet.hairlineWidth}
-            borderColor={palette.border}
-            backgroundColor={palette.card}>
-            <LinearGradient
-              colors={[palette.accentSoft, 'transparent']}
-              start={{ x: 0.2, y: 0 }}
-              end={{ x: 0.8, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-            <YStack alignItems="center" paddingVertical={38} paddingHorizontal={26} gap={18}>
-              <Image
-                source={require('@/assets/images/icon.png')}
-                style={styles.heroIcon}
-                contentFit="cover"
-              />
-              <YStack alignItems="center" gap={6}>
-                <Text color={palette.text} fontSize={19} fontWeight="800">
-                  登录酷狗账号
-                </Text>
-                <Text color={palette.textTertiary} fontSize={13} textAlign="center" lineHeight={19}>
-                  同步你的歌单与收藏，获得完整的听歌体验
-                </Text>
-              </YStack>
               <XStack
-                height={46}
-                paddingHorizontal={34}
-                borderRadius={23}
-                overflow="hidden"
                 alignItems="center"
                 justifyContent="center"
+                height={48}
+                borderRadius={16}
+                backgroundColor={palette.card}
+                borderWidth={StyleSheet.hairlineWidth}
+                borderColor={palette.border}
                 transition="quickest"
-                pressStyle={{ scale: 0.97, opacity: 0.9 }}
-                onPress={() => router.push('/login')}>
-                <LinearGradient
-                  colors={[palette.gradientStart, palette.gradientEnd]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
-                <Text color="#FFFFFF" fontSize={14.5} fontWeight="700">
-                  立即登录
+                pressStyle={{ opacity: 0.7 }}
+                onPress={confirmLogout}>
+                <Text color={palette.danger} fontSize={14.5} fontWeight="600">
+                  退出登录
                 </Text>
               </XStack>
-              {state.error ? (
-                <Text color={palette.danger} fontSize={12}>
-                  {state.error}
+
+              {version ? (
+                <Text color={palette.textTertiary} fontSize={11} textAlign="center" paddingTop={6}>
+                  MoeKoe Music v{version}
                 </Text>
               ) : null}
             </YStack>
+          </>
+        ) : (
+          <YStack
+            alignSelf="center"
+            width="100%"
+            maxWidth={MaxContentWidth}
+            paddingHorizontal={16}
+            paddingTop={insets.top + 14}
+            gap={18}>
+            <Text color={palette.text} fontSize={26} fontWeight="800" letterSpacing={0.3}>
+              我的
+            </Text>
+
+            {state.checking ? (
+              <YStack alignItems="center" paddingVertical={80}>
+                <Spinner size="large" color={palette.accent} />
+              </YStack>
+            ) : (
+              <YStack
+                borderRadius={26}
+                overflow="hidden"
+                borderWidth={StyleSheet.hairlineWidth}
+                borderColor={palette.border}
+                backgroundColor={palette.card}>
+                <LinearGradient
+                  colors={[palette.accentSoft, 'transparent']}
+                  start={{ x: 0.2, y: 0 }}
+                  end={{ x: 0.8, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <YStack alignItems="center" paddingVertical={38} paddingHorizontal={26} gap={18}>
+                  <Image
+                    source={require('@/assets/images/icon.png')}
+                    style={styles.heroIcon}
+                    contentFit="cover"
+                  />
+                  <YStack alignItems="center" gap={6}>
+                    <Text color={palette.text} fontSize={19} fontWeight="800">
+                      登录酷狗账号
+                    </Text>
+                    <Text color={palette.textTertiary} fontSize={13} textAlign="center" lineHeight={19}>
+                      同步你的歌单与收藏，获得完整的听歌体验
+                    </Text>
+                  </YStack>
+                  <XStack
+                    height={46}
+                    paddingHorizontal={34}
+                    borderRadius={23}
+                    overflow="hidden"
+                    alignItems="center"
+                    justifyContent="center"
+                    transition="quickest"
+                    pressStyle={{ scale: 0.97, opacity: 0.9 }}
+                    onPress={() => router.push('/login')}>
+                    <LinearGradient
+                      colors={[palette.gradientStart, palette.gradientEnd]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <Text color="#FFFFFF" fontSize={14.5} fontWeight="700">
+                      立即登录
+                    </Text>
+                  </XStack>
+                  {state.error ? (
+                    <Text color={palette.danger} fontSize={12}>
+                      {state.error}
+                    </Text>
+                  ) : null}
+                </YStack>
+              </YStack>
+            )}
+
+            {version ? (
+              <Text color={palette.textTertiary} fontSize={11} textAlign="center" paddingTop={6}>
+                MoeKoe Music v{version}
+              </Text>
+            ) : null}
           </YStack>
         )}
-
-        {version ? (
-          <Text color={palette.textTertiary} fontSize={11} textAlign="center" paddingTop={6}>
-            MoeKoe Music v{version}
-          </Text>
-        ) : null}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  content: {
-    alignSelf: 'center',
-    width: '100%',
-    maxWidth: MaxContentWidth,
-    paddingHorizontal: 16,
-    gap: 18,
-  },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
   },
   heroIcon: {
     width: 66,

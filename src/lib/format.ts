@@ -3,8 +3,8 @@ export function sizedImage(url: string | null | undefined, size: number): string
     return null;
   }
 
-  const resolved = url.includes('{size}') ? url.replaceAll('{size}', String(size)) : url;
-  return resolved.replace(/^http:\/\//, 'https://');
+  // 保留原始协议：酷狗部分图片 CDN 不支持 HTTPS，明文流量已在 app.json 放行
+  return url.includes('{size}') ? url.replaceAll('{size}', String(size)) : url;
 }
 
 /** 酷狗接口的时长字段有秒和毫秒两种口径，统一为毫秒。 */

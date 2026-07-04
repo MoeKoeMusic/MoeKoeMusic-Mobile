@@ -1,5 +1,5 @@
 import type { PlayerTrack } from '@/features/player/types';
-import { pickNumber, pickStringLike, pickText, toRecord, toRecords } from '@/lib/api-parse';
+import { detectAudioQuality, pickNumber, pickStringLike, pickText, toRecord, toRecords } from '@/lib/api-parse';
 import { normalizeDurationMs, sizedImage, stripEmTags } from '@/lib/format';
 import { mobileApi, bootstrapMobileApi } from '@/lib/kugou-api';
 
@@ -44,6 +44,7 @@ export async function searchSongs(keywords: string, page: number): Promise<Searc
         albumAudioId: pickStringLike(item.MixSongID) || undefined,
         durationMs: normalizeDurationMs(item.Duration),
         vip: pickNumber(item.Privilege) >= 10 || undefined,
+        quality: detectAudioQuality(item),
       };
     })
     .filter((item): item is PlayerTrack => Boolean(item));

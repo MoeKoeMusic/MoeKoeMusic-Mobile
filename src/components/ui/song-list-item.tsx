@@ -56,6 +56,21 @@ export const SongListItem = memo(function SongListItem({
             numberOfLines={1}>
             {track.title}
           </Text>
+          {track.quality ? (
+            <Text
+              color={track.quality === 'sq' ? palette.vip : palette.textTertiary}
+              borderWidth={1}
+              borderColor={track.quality === 'sq' ? palette.vip : palette.textTertiary}
+              opacity={track.quality === 'sq' ? 1 : 0.85}
+              fontSize={8.5}
+              fontWeight="800"
+              paddingHorizontal={4}
+              paddingVertical={1}
+              borderRadius={4}
+              overflow="hidden">
+              {track.quality.toUpperCase()}
+            </Text>
+          ) : null}
           {track.vip ? (
             <Text
               color={palette.vip}

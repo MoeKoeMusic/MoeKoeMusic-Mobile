@@ -60,3 +60,24 @@ export function formatApiError(error: unknown): string {
 
   return String(error);
 }
+
+/**
+ * 判断歌曲可用最高音质。酷狗不同接口的口径不同：
+ * 歌单/推荐类带 relate_goods（长度 >2 含无损、>1 含 320k），
+ * 搜索类用 SQFileHash / HQFileHash 字段。
+ */
+export function detectAudioQuality(
+  record: Record<string, unknown>
+): 'sq' | 'hq' | undefined {
+  const goodsCount = Array.isArray(record.relate_goods) ? record.relate_goods.length : 0;
+
+  if (goodsCount > 2 || pickText(record.SQFileHash, record.sqhash, record.hash_flac)) {
+    return 'sq';
+  }
+
+  if (goodsCount > 1 || pickText(record.HQFileHash, record.hash_320)) {
+    return 'hq';
+  }
+
+  return undefined;
+}

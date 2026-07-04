@@ -6,6 +6,8 @@ export type UserProfile = {
   userid: string;
   nickname: string;
   avatarUrl: string | null;
+  backgroundUrl: string | null;
+  signature: string;
   fans: number;
   follows: number;
   listenMinutes: number;
@@ -57,6 +59,8 @@ export async function fetchUserProfile(): Promise<UserProfile> {
     userid: pickStringLike(data.userid, session.userid),
     nickname: pickText(data.nickname, `用户 ${session.userid ?? ''}`),
     avatarUrl: sizedImage(pickText(data.pic), 240),
+    backgroundUrl: sizedImage(pickText(data.bg_pic), 720),
+    signature: pickText(data.descri),
     fans: pickNumber(data.fans),
     follows: pickNumber(data.follows),
     listenMinutes: pickNumber(data.duration),

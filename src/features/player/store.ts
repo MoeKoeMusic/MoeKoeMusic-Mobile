@@ -176,8 +176,6 @@ async function loadTrackAt(index: number, options?: { autoplay?: boolean }) {
   });
   progressStore.setState({ positionMs: 0, durationMs: track.durationMs ?? 0 });
 
-  void loadLyricsFor(track, sequence);
-
   try {
     const source = await resolveSongSource(track);
     if (sequence !== loadSequence) {
@@ -195,6 +193,9 @@ async function loadTrackAt(index: number, options?: { autoplay?: boolean }) {
     if (source.durationMs > 0) {
       progressStore.setState({ durationMs: source.durationMs });
     }
+
+    // 歌词延后到确认可播放之后再取，跳歌链路上不浪费请求
+    void loadLyricsFor(track, sequence);
   } catch (error) {
     if (sequence !== loadSequence) {
       return;
@@ -205,6 +206,7 @@ async function loadTrackAt(index: number, options?: { autoplay?: boolean }) {
       loading: false,
       playing: false,
       buffering: false,
+      lyricsStatus: 'empty',
       error: error instanceof Error ? error.message : '播放失败，请稍后重试',
     });
 

@@ -9,6 +9,8 @@ export type PlayerTrack = {
   albumAudioId?: string;
   durationMs?: number;
   vip?: boolean;
+  /** 可用最高音质：sq=无损，hq=320k；缺省为普通音质。 */
+  quality?: 'sq' | 'hq';
 };
 
 export type PlayMode = 'sequence' | 'shuffle' | 'single';
