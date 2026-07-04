@@ -5,13 +5,18 @@
   "description": "MoeKoe mobile app",
   "dependencies": {
     "@expo/ui": "~57.0.3",
+    "@expo/vector-icons": "^15.0.2",
+    "@tamagui/config": "^2.4.0",
     "buffer": "^6.0.3",
     "expo": "~57.0.2",
+    "expo-audio": "~57.0.0",
+    "expo-build-properties": "~57.0.3",
     "expo-constants": "~57.0.3",
     "expo-device": "~57.0.0",
     "expo-font": "~57.0.0",
     "expo-glass-effect": "~57.0.0",
     "expo-image": "~57.0.0",
+    "expo-linear-gradient": "~57.0.0",
     "expo-linking": "~57.0.1",
     "expo-router": "~57.0.3",
     "expo-secure-store": "~57.0.0",
@@ -28,10 +33,13 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
     "react-native-web": "~0.21.0",
-    "react-native-worklets": "0.10.0"
+    "react-native-worklets": "0.10.0",
+    "tamagui": "^2.4.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.0",
     "typescript": "~6.0.3"
   },
   "scripts": {

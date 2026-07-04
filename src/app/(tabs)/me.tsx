@@ -1,588 +1,434 @@
-import { startTransition, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { startTransition, useCallback, useRef, useState } from 'react';
+import { Alert, RefreshControl, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Artwork } from '@/components/ui/artwork';
+import { SectionHeader } from '@/components/ui/section-header';
 import {
-  bootstrapMobileApi,
-  clearApiSession,
-  getApiSession,
-  mobileApi,
-} from '@/lib/kugou-api';
+  fetchUserPlaylists,
+  fetchUserProfile,
+  isLoggedIn,
+  type UserPlaylistItem,
+  type UserProfile,
+} from '@/features/account/user-api';
+import { MaxContentWidth } from '@/constants/theme';
+import { useDockContentInset } from '@/hooks/use-dock-inset';
+import { usePalette } from '@/hooks/use-palette';
+import { bootstrapMobileApi, clearApiSession } from '@/lib/kugou-api';
 
-type UnknownRecord = Record<string, unknown>;
-
-type PageState = {
-  session: Record<string, string>;
-  message: string;
-  loading: boolean;
-  sendingCode: boolean;
-  loggingIn: boolean;
-  countdown: number;
+type ScreenState = {
+  checking: boolean;
+  refreshing: boolean;
+  loggedIn: boolean;
+  profile: UserProfile | null;
+  playlists: UserPlaylistItem[];
+  error: string;
 };
 
-function toRecord(value: unknown): UnknownRecord {
-  return value && typeof value === 'object' ? (value as UnknownRecord) : {};
-}
-
-function pickText(...values: unknown[]) {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim();
-    }
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return String(value);
-    }
+function formatListenTime(minutes: number): string {
+  if (minutes >= 60) {
+    return `${Math.floor(minutes / 60)} 小时`;
   }
 
-  return '';
+  return minutes > 0 ? `${minutes} 分钟` : '—';
 }
 
-function readApiMessage(body: unknown) {
-  const data = toRecord(body);
-  return pickText(data.error_msg, data.errmsg, data.msg, data.message, data.error, data.info);
-}
-
-function isApiSuccess(body: unknown) {
-  const data = toRecord(body);
-  return Boolean(
-    data.status === 1 || data.code === 200 || data.errcode === 0 || data.error_code === 0
-  );
-}
-
-function isValidPhone(value: string) {
-  return /^1\d{10}$/.test(value);
-}
-
-function maskPhone(value: string) {
-  if (!isValidPhone(value)) {
-    return value;
-  }
-
-  return `${value.slice(0, 3)}****${value.slice(7)}`;
-}
-
-function Button({
-  label,
+function PlaylistRow({
+  item,
   onPress,
-  disabled,
-  secondary = false,
-  loading = false,
 }: {
-  label: string;
+  item: UserPlaylistItem;
   onPress: () => void;
-  disabled?: boolean;
-  secondary?: boolean;
-  loading?: boolean;
 }) {
+  const palette = usePalette();
+
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => pressed && !disabled && styles.pressed}>
-      <View
-        style={[
-          styles.button,
-          secondary ? styles.buttonSecondary : styles.buttonPrimary,
-          disabled && styles.buttonDisabled,
-        ]}>
-        {loading ? (
-          <ActivityIndicator size="small" color={secondary ? '#111827' : '#FFFFFF'} />
-        ) : (
-          <ThemedText
-            type="smallBold"
-            style={secondary ? styles.buttonSecondaryText : styles.buttonPrimaryText}>
-            {label}
-          </ThemedText>
-        )}
-      </View>
-    </Pressable>
+    <XStack
+      alignItems="center"
+      gap={12}
+      paddingVertical={9}
+      paddingHorizontal={10}
+      borderRadius={14}
+      transition="quickest"
+      pressStyle={{ opacity: 0.65, backgroundColor: palette.cardAlt }}
+      onPress={onPress}>
+      <Artwork uri={item.coverUrl} size={46} radius={12} />
+      <YStack flex={1} gap={2}>
+        <Text color={palette.text} fontSize={14.5} fontWeight="600" numberOfLines={1}>
+          {item.name}
+        </Text>
+        <Text color={palette.textTertiary} fontSize={12}>
+          {item.count} 首
+        </Text>
+      </YStack>
+      <Ionicons name="chevron-forward" size={16} color={palette.textTertiary} />
+    </XStack>
   );
 }
 
 export default function MeScreen() {
-  const theme = useTheme();
+  const palette = usePalette();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
-  const [state, setState] = useState<PageState>({
-    session: {},
-    message: '',
-    loading: true,
-    sendingCode: false,
-    loggingIn: false,
-    countdown: 0,
+  const dockInset = useDockContentInset();
+  const requestIdRef = useRef(0);
+  const [state, setState] = useState<ScreenState>({
+    checking: true,
+    refreshing: false,
+    loggedIn: false,
+    profile: null,
+    playlists: [],
+    error: '',
   });
 
-  const isLoggedIn = Boolean(state.session.userid && state.session.token);
-  const maskedPhone = useMemo(() => maskPhone(phone), [phone]);
+  const version = Constants.expoConfig?.version ?? '';
 
-  useEffect(() => {
-    void hydrateSession();
+  const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+    const requestId = ++requestIdRef.current;
+
+    startTransition(() => {
+      setState((current) => ({
+        ...current,
+        checking: mode === 'initial' && !current.profile,
+        refreshing: mode === 'refresh',
+        error: '',
+      }));
+    });
+
+    try {
+      await bootstrapMobileApi();
+
+      if (!isLoggedIn()) {
+        if (requestId !== requestIdRef.current) return;
+        startTransition(() => {
+          setState({
+            checking: false,
+            refreshing: false,
+            loggedIn: false,
+            profile: null,
+            playlists: [],
+            error: '',
+          });
+        });
+        return;
+      }
+
+      const [profileResult, playlistResult] = await Promise.allSettled([
+        fetchUserProfile(),
+        fetchUserPlaylists(),
+      ]);
+
+      if (requestId !== requestIdRef.current) return;
+
+      if (profileResult.status === 'rejected') {
+        throw profileResult.reason;
+      }
+
+      startTransition(() => {
+        setState({
+          checking: false,
+          refreshing: false,
+          loggedIn: true,
+          profile: profileResult.value,
+          playlists: playlistResult.status === 'fulfilled' ? playlistResult.value : [],
+          error: '',
+        });
+      });
+    } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      startTransition(() => {
+        setState((current) => ({
+          ...current,
+          checking: false,
+          refreshing: false,
+          error: error instanceof Error ? error.message : '加载失败',
+        }));
+      });
+    }
   }, []);
 
-  useEffect(() => {
-    if (state.countdown <= 0) {
-      return;
-    }
+  useFocusEffect(
+    useCallback(() => {
+      void load('initial');
+    }, [load])
+  );
 
-    const timer = setTimeout(() => {
-      setState((current) => ({
-        ...current,
-        countdown: Math.max(0, current.countdown - 1),
-      }));
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [state.countdown]);
-
-  async function hydrateSession() {
-    try {
-      await bootstrapMobileApi();
-
-      startTransition(() => {
-        setState((current) => ({
-          ...current,
-          loading: false,
-          session: getApiSession(),
-          message: '',
-        }));
-      });
-    } catch (error) {
-      startTransition(() => {
-        setState((current) => ({
-          ...current,
-          loading: false,
-          session: getApiSession(),
-          message: error instanceof Error ? error.message : String(error),
-        }));
-      });
-    }
+  function confirmLogout() {
+    Alert.alert('退出登录', '将清除本机保存的登录信息', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '退出',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            await clearApiSession();
+            await load('initial');
+          })();
+        },
+      },
+    ]);
   }
 
-  async function handleSendCode() {
-    const mobile = phone.trim();
-    if (!isValidPhone(mobile)) {
-      setState((current) => ({
-        ...current,
-        message: '请输入正确的 11 位手机号。',
-      }));
-      return;
-    }
+  const createdPlaylists = state.playlists.filter((item) => item.isMine);
+  const collectedPlaylists = state.playlists.filter((item) => !item.isMine);
 
-    setState((current) => ({
-      ...current,
-      sendingCode: true,
-      message: '',
-    }));
-
-    try {
-      await bootstrapMobileApi();
-      const response = await mobileApi.captcha_sent({ mobile });
-
-      if (!isApiSuccess(response.body)) {
-        throw new Error(readApiMessage(response.body) || '验证码发送失败');
-      }
-
-      startTransition(() => {
-        setState((current) => ({
-          ...current,
-          sendingCode: false,
-          countdown: 60,
-          message: `验证码已发送到 ${maskPhone(mobile)}。`,
-        }));
-      });
-    } catch (error) {
-      startTransition(() => {
-        setState((current) => ({
-          ...current,
-          sendingCode: false,
-          message: error instanceof Error ? error.message : String(error),
-        }));
-      });
-    }
-  }
-
-  async function handleLogin() {
-    const mobile = phone.trim();
-    const verifyCode = code.trim();
-
-    if (!isValidPhone(mobile)) {
-      setState((current) => ({
-        ...current,
-        message: '请输入正确的 11 位手机号。',
-      }));
-      return;
-    }
-
-    if (verifyCode.length < 4) {
-      setState((current) => ({
-        ...current,
-        message: '请输入收到的验证码。',
-      }));
-      return;
-    }
-
-    setState((current) => ({
-      ...current,
-      loggingIn: true,
-      message: '',
-    }));
-
-    try {
-      await bootstrapMobileApi();
-      const response = await mobileApi.login_cellphone({ mobile, code: verifyCode });
-
-      if (!isApiSuccess(response.body)) {
-        throw new Error(readApiMessage(response.body) || '登录失败');
-      }
-
-      startTransition(() => {
-        setState((current) => ({
-          ...current,
-          loggingIn: false,
-          session: getApiSession(),
-          message: `已登录 ${maskPhone(mobile)}。`,
-        }));
-        setCode('');
-      });
-    } catch (error) {
-      startTransition(() => {
-        setState((current) => ({
-          ...current,
-          loggingIn: false,
-          session: getApiSession(),
-          message: error instanceof Error ? error.message : String(error),
-        }));
-      });
-    }
-  }
-
-  async function handleClearSession() {
-    setState((current) => ({
-      ...current,
-      loading: true,
-      message: '',
-    }));
-
-    await clearApiSession();
-    setPhone('');
-    setCode('');
-
-    await hydrateSession();
+  function openPlaylist(item: UserPlaylistItem) {
+    router.push({
+      pathname: '/playlist/[id]',
+      params: { id: item.gid, name: item.name, cover: item.coverUrl ?? '' },
+    });
   }
 
   return (
-    <ThemedView style={styles.screen}>
+    <View flex={1} backgroundColor={palette.background}>
       <ScrollView
-        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={state.refreshing}
+            onRefresh={() => void load('refresh')}
+            tintColor={palette.accent}
+            colors={[palette.accent]}
+            progressViewOffset={insets.top}
+          />
+        }
         contentContainerStyle={[
           styles.content,
-          {
-            paddingTop: insets.top + Spacing.three,
-            paddingBottom: insets.bottom + BottomTabInset + Spacing.four,
-          },
+          { paddingTop: insets.top + 14, paddingBottom: dockInset },
         ]}>
-        <View style={styles.header}>
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            我的
-          </ThemedText>
-          <ThemedText type="title" style={styles.headerTitle}>
-            账号中心
-          </ThemedText>
-          <ThemedText themeColor="textSecondary">
-            使用手机号验证码登录 MoeKoe，登录状态会和应用内 API 会话一起保存在本机。
-          </ThemedText>
-        </View>
+        <Text color={palette.text} fontSize={26} fontWeight="800" letterSpacing={0.3}>
+          我的
+        </Text>
 
-        <ThemedView type="backgroundElement" style={styles.accountCard}>
-          <View style={styles.avatarWrap}>
-            <View style={[styles.avatarCore, { backgroundColor: theme.backgroundSelected }]}>
-              <ThemedText type="subtitle" style={styles.avatarText}>
-                {isLoggedIn ? 'M' : '我'}
-              </ThemedText>
-            </View>
-          </View>
-
-          <View style={styles.accountMeta}>
-            <ThemedText type="subtitle" style={styles.accountTitle}>
-              {isLoggedIn ? '当前账号已登录' : '登录后可同步个人状态'}
-            </ThemedText>
-            <ThemedText themeColor="textSecondary">
-              {isLoggedIn
-                ? `用户 ID ${state.session.userid} · ${
-                    state.session.vip_type === '0' ? '普通账号' : 'VIP 账号'
-                  }`
-                : '登录成功后，推荐、收藏和个人数据请求会自动带上账号会话。'}
-            </ThemedText>
-          </View>
-
-          <View style={styles.accountStats}>
-            <View style={[styles.statChip, { backgroundColor: theme.background }]}>
-              <ThemedText type="smallBold">{state.session.dfid ? '已注册' : '未注册'}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                设备会话
-              </ThemedText>
-            </View>
-            <View style={[styles.statChip, { backgroundColor: theme.background }]}>
-              <ThemedText type="smallBold">{state.session.token ? '已登录' : '未登录'}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                账号状态
-              </ThemedText>
-            </View>
-          </View>
-
-          {state.loading ? (
-            <View style={styles.accountLoading}>
-              <ActivityIndicator />
-              <ThemedText themeColor="textSecondary">正在恢复本地会话…</ThemedText>
-            </View>
-          ) : null}
-        </ThemedView>
-
-        <ThemedView type="backgroundElement" style={styles.formCard}>
-          <View style={styles.formHeader}>
-            <ThemedText type="subtitle" style={styles.formTitle}>
-              手机号验证码登录
-            </ThemedText>
-            <ThemedText themeColor="textSecondary">
-              验证码发送和登录都直接调用应用内 API，不需要额外配置接口地址。
-            </ThemedText>
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <ThemedText type="smallBold">手机号</ThemedText>
-            <TextInput
-              value={phone}
-              onChangeText={(value) => setPhone(value.replace(/[^\d]/g, '').slice(0, 11))}
-              placeholder="请输入 11 位手机号"
-              placeholderTextColor={theme.textSecondary}
-              keyboardType="number-pad"
-              textContentType="telephoneNumber"
-              editable={!state.loggingIn}
-              style={[
-                styles.input,
-                {
-                  backgroundColor: theme.background,
-                  color: theme.text,
-                },
-              ]}
-            />
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <ThemedText type="smallBold">验证码</ThemedText>
-            <View style={styles.codeRow}>
-              <TextInput
-                value={code}
-                onChangeText={(value) => setCode(value.replace(/[^\d]/g, '').slice(0, 8))}
-                placeholder="请输入短信验证码"
-                placeholderTextColor={theme.textSecondary}
-                keyboardType="number-pad"
-                editable={!state.loggingIn}
-                style={[
-                  styles.input,
-                  styles.codeInput,
-                  {
-                    backgroundColor: theme.background,
-                    color: theme.text,
-                  },
-                ]}
+        {state.checking ? (
+          <YStack alignItems="center" paddingVertical={80}>
+            <Spinner size="large" color={palette.accent} />
+          </YStack>
+        ) : state.loggedIn && state.profile ? (
+          <>
+            <YStack
+              borderRadius={24}
+              overflow="hidden"
+              borderWidth={StyleSheet.hairlineWidth}
+              borderColor={palette.border}
+              backgroundColor={palette.card}>
+              <LinearGradient
+                colors={[palette.accentSoft, 'transparent']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={StyleSheet.absoluteFill}
               />
-              <Button
-                label={
-                  state.countdown > 0
-                    ? `${state.countdown}s 后重发`
-                    : state.sendingCode
-                      ? '发送中'
-                      : '获取验证码'
-                }
-                onPress={() => void handleSendCode()}
-                disabled={state.countdown > 0 || state.sendingCode || state.loggingIn}
-                secondary
-                loading={state.sendingCode}
+              <YStack padding={20} gap={16} backgroundColor="transparent">
+                <XStack alignItems="center" gap={16}>
+                  {state.profile.avatarUrl ? (
+                    <Image source={{ uri: state.profile.avatarUrl }} style={styles.avatar} contentFit="cover" />
+                  ) : (
+                    <Artwork uri={null} size={64} circle />
+                  )}
+                  <YStack flex={1} gap={5}>
+                    <XStack alignItems="center" gap={8}>
+                      <Text color={palette.text} fontSize={19} fontWeight="800" numberOfLines={1}>
+                        {state.profile.nickname}
+                      </Text>
+                      {state.profile.isVip ? (
+                        <Text
+                          color={palette.vip}
+                          backgroundColor={palette.vipSoft}
+                          fontSize={10}
+                          fontWeight="800"
+                          paddingHorizontal={7}
+                          paddingVertical={2.5}
+                          borderRadius={7}
+                          overflow="hidden">
+                          {state.profile.vipLabel}
+                        </Text>
+                      ) : null}
+                    </XStack>
+                    <Text color={palette.textTertiary} fontSize={12}>
+                      ID {state.profile.userid}
+                    </Text>
+                  </YStack>
+                </XStack>
+
+                <XStack gap={10}>
+                  {[
+                    { label: '关注', value: String(state.profile.follows) },
+                    { label: '粉丝', value: String(state.profile.fans) },
+                    { label: '听歌时长', value: formatListenTime(state.profile.listenMinutes) },
+                  ].map((stat) => (
+                    <YStack
+                      key={stat.label}
+                      flex={1}
+                      alignItems="center"
+                      gap={3}
+                      paddingVertical={12}
+                      borderRadius={16}
+                      backgroundColor={palette.cardAlt}>
+                      <Text color={palette.text} fontSize={15} fontWeight="700">
+                        {stat.value}
+                      </Text>
+                      <Text color={palette.textTertiary} fontSize={11.5}>
+                        {stat.label}
+                      </Text>
+                    </YStack>
+                  ))}
+                </XStack>
+              </YStack>
+            </YStack>
+
+            {state.error ? (
+              <XStack
+                alignItems="center"
+                gap={8}
+                paddingHorizontal={14}
+                paddingVertical={10}
+                borderRadius={14}
+                backgroundColor={palette.dangerSoft}>
+                <Ionicons name="alert-circle" size={15} color={palette.danger} />
+                <Text flex={1} color={palette.danger} fontSize={12.5}>
+                  {state.error}
+                </Text>
+              </XStack>
+            ) : null}
+
+            {createdPlaylists.length ? (
+              <YStack gap={10}>
+                <SectionHeader title="我创建的歌单" />
+                <YStack
+                  backgroundColor={palette.card}
+                  borderRadius={20}
+                  borderWidth={StyleSheet.hairlineWidth}
+                  borderColor={palette.border}
+                  paddingVertical={6}
+                  paddingHorizontal={4}>
+                  {createdPlaylists.map((item) => (
+                    <PlaylistRow key={item.gid} item={item} onPress={() => openPlaylist(item)} />
+                  ))}
+                </YStack>
+              </YStack>
+            ) : null}
+
+            {collectedPlaylists.length ? (
+              <YStack gap={10}>
+                <SectionHeader title="收藏的歌单" />
+                <YStack
+                  backgroundColor={palette.card}
+                  borderRadius={20}
+                  borderWidth={StyleSheet.hairlineWidth}
+                  borderColor={palette.border}
+                  paddingVertical={6}
+                  paddingHorizontal={4}>
+                  {collectedPlaylists.map((item) => (
+                    <PlaylistRow key={item.gid} item={item} onPress={() => openPlaylist(item)} />
+                  ))}
+                </YStack>
+              </YStack>
+            ) : null}
+
+            <XStack
+              alignItems="center"
+              justifyContent="center"
+              height={48}
+              borderRadius={16}
+              backgroundColor={palette.card}
+              borderWidth={StyleSheet.hairlineWidth}
+              borderColor={palette.border}
+              transition="quickest"
+              pressStyle={{ opacity: 0.7 }}
+              onPress={confirmLogout}>
+              <Text color={palette.danger} fontSize={14.5} fontWeight="600">
+                退出登录
+              </Text>
+            </XStack>
+          </>
+        ) : (
+          <YStack
+            borderRadius={26}
+            overflow="hidden"
+            borderWidth={StyleSheet.hairlineWidth}
+            borderColor={palette.border}
+            backgroundColor={palette.card}>
+            <LinearGradient
+              colors={[palette.accentSoft, 'transparent']}
+              start={{ x: 0.2, y: 0 }}
+              end={{ x: 0.8, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <YStack alignItems="center" paddingVertical={38} paddingHorizontal={26} gap={18}>
+              <Image
+                source={require('@/assets/images/icon.png')}
+                style={styles.heroIcon}
+                contentFit="cover"
               />
-            </View>
-          </View>
+              <YStack alignItems="center" gap={6}>
+                <Text color={palette.text} fontSize={19} fontWeight="800">
+                  登录酷狗账号
+                </Text>
+                <Text color={palette.textTertiary} fontSize={13} textAlign="center" lineHeight={19}>
+                  同步你的歌单与收藏，获得完整的听歌体验
+                </Text>
+              </YStack>
+              <XStack
+                height={46}
+                paddingHorizontal={34}
+                borderRadius={23}
+                overflow="hidden"
+                alignItems="center"
+                justifyContent="center"
+                transition="quickest"
+                pressStyle={{ scale: 0.97, opacity: 0.9 }}
+                onPress={() => router.push('/login')}>
+                <LinearGradient
+                  colors={[palette.gradientStart, palette.gradientEnd]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <Text color="#FFFFFF" fontSize={14.5} fontWeight="700">
+                  立即登录
+                </Text>
+              </XStack>
+              {state.error ? (
+                <Text color={palette.danger} fontSize={12}>
+                  {state.error}
+                </Text>
+              ) : null}
+            </YStack>
+          </YStack>
+        )}
 
-          <View style={styles.noticeBlock}>
-            <ThemedText type="smallBold">
-              {maskedPhone && isValidPhone(phone)
-                ? `验证码将发送到 ${maskedPhone}`
-                : '验证码由酷狗登录接口直接下发'}
-            </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {state.message || '登录成功后，MoeKoe 会自动更新当前账号会话。'}
-            </ThemedText>
-          </View>
-
-          <View style={styles.formActions}>
-            <Button
-              label={isLoggedIn ? '切换到这个手机号' : '立即登录'}
-              onPress={() => void handleLogin()}
-              disabled={state.loggingIn || state.loading}
-              loading={state.loggingIn}
-            />
-            <Button
-              label="清空会话"
-              onPress={() => void handleClearSession()}
-              disabled={state.loading || state.loggingIn || state.sendingCode}
-              secondary
-            />
-          </View>
-        </ThemedView>
-
-        <ThemedView type="backgroundElement" style={styles.footnoteCard}>
-          <ThemedText type="smallBold">登录说明</ThemedText>
-          <ThemedText themeColor="textSecondary">
-            当前版本支持手机号验证码登录与本机会话管理，登录态会自动写入安全存储。
-          </ThemedText>
-        </ThemedView>
+        {version ? (
+          <Text color={palette.textTertiary} fontSize={11} textAlign="center" paddingTop={6}>
+            MoeKoe Music v{version}
+          </Text>
+        ) : null}
       </ScrollView>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
   content: {
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
-    paddingHorizontal: Spacing.three,
-    gap: Spacing.three,
+    paddingHorizontal: 16,
+    gap: 18,
   },
-  header: {
-    gap: Spacing.one,
-  },
-  headerTitle: {
-    fontSize: 38,
-    lineHeight: 42,
-  },
-  accountCard: {
+  avatar: {
+    width: 64,
+    height: 64,
     borderRadius: 32,
-    padding: Spacing.four,
-    gap: Spacing.three,
   },
-  avatarWrap: {
-    alignItems: 'flex-start',
-  },
-  avatarCore: {
-    width: 76,
-    height: 76,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontSize: 28,
-    lineHeight: 30,
-  },
-  accountMeta: {
-    gap: Spacing.one,
-  },
-  accountTitle: {
-    fontSize: 28,
-    lineHeight: 32,
-  },
-  accountStats: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  statChip: {
-    flex: 1,
-    borderRadius: 22,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    gap: 2,
-  },
-  accountLoading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  formCard: {
-    borderRadius: 32,
-    padding: Spacing.four,
-    gap: Spacing.three,
-  },
-  formHeader: {
-    gap: Spacing.one,
-  },
-  formTitle: {
-    fontSize: 28,
-    lineHeight: 32,
-  },
-  fieldGroup: {
-    gap: Spacing.one,
-  },
-  input: {
-    minHeight: 54,
-    borderRadius: 18,
-    paddingHorizontal: Spacing.three,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  codeRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    alignItems: 'center',
-  },
-  codeInput: {
-    flex: 1,
-  },
-  noticeBlock: {
-    borderRadius: 22,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    gap: Spacing.one,
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
-  },
-  formActions: {
-    gap: Spacing.two,
-  },
-  button: {
-    minHeight: 52,
-    borderRadius: 999,
-    paddingHorizontal: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonPrimary: {
-    backgroundColor: '#111827',
-  },
-  buttonSecondary: {
-    backgroundColor: '#E6EAEE',
-  },
-  buttonPrimaryText: {
-    color: '#FFFFFF',
-  },
-  buttonSecondaryText: {
-    color: '#111827',
-  },
-  buttonDisabled: {
-    opacity: 0.52,
-  },
-  footnoteCard: {
-    borderRadius: 28,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    gap: Spacing.one,
-  },
-  pressed: {
-    opacity: 0.82,
+  heroIcon: {
+    width: 66,
+    height: 66,
+    borderRadius: 20,
   },
 });
