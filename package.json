@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "description": "MoeKoe mobile app",
+  "license": "GPL-2.0-only",
   "dependencies": {
     "@expo/ui": "~57.0.3",
     "@expo/vector-icons": "^15.0.2",
