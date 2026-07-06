@@ -1,12 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { startTransition, useEffect, useRef, useState } from 'react';
-import { FlatList, Keyboard, StyleSheet, TextInput } from 'react-native';
+import { FlatList, Keyboard, StyleSheet, TextInput, View as RNView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
+import { MiniPlayer, MINI_PLAYER_HEIGHT } from '@/components/ui/mini-player';
 import { SongListItem } from '@/components/ui/song-list-item';
 import { MaxContentWidth } from '@/constants/theme';
-import { playerActions, usePlayer } from '@/features/player/store';
+import { playerActions, useHasTrack, usePlayer } from '@/features/player/store';
 import type { PlayerTrack } from '@/features/player/types';
 import {
   fetchHotKeywords,
@@ -14,7 +16,6 @@ import {
   searchSongs,
   type SearchKeyword,
 } from '@/features/search/search-api';
-import { useDockContentInset } from '@/hooks/use-dock-inset';
 import { usePalette } from '@/hooks/use-palette';
 
 type ResultsState = {
@@ -41,8 +42,9 @@ const EMPTY_RESULTS: ResultsState = {
 
 export default function SearchScreen() {
   const palette = usePalette();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const dockInset = useDockContentInset();
+  const hasTrack = useHasTrack();
   const { track } = usePlayer();
   const inputRef = useRef<TextInput>(null);
   const searchIdRef = useRef(0);
@@ -170,11 +172,13 @@ export default function SearchScreen() {
     setQuery('');
     setSuggestions([]);
     setResults(EMPTY_RESULTS);
+    inputRef.current?.focus();
   }
 
   const showResults = Boolean(results.keyword) && !suggestions.length;
   const showSuggestions = suggestions.length > 0;
   const activeHash = track?.hash;
+  const listBottomInset = insets.bottom + (hasTrack ? MINI_PLAYER_HEIGHT + 26 : 16) + 16;
 
   return (
     <View flex={1} backgroundColor={palette.background}>
@@ -183,67 +187,62 @@ export default function SearchScreen() {
         width="100%"
         maxWidth={MaxContentWidth}
         flex={1}
-        paddingTop={insets.top + 14}
-        gap={14}>
-        <YStack paddingHorizontal={16} gap={14}>
-          <Text color={palette.text} fontSize={26} fontWeight="800" letterSpacing={0.3}>
-            搜索
-          </Text>
+        paddingTop={insets.top + 10}
+        gap={12}>
+        <XStack alignItems="center" gap={10} paddingHorizontal={16}>
+          <XStack
+            width={38}
+            height={38}
+            borderRadius={19}
+            alignItems="center"
+            justifyContent="center"
+            backgroundColor={palette.card}
+            borderWidth={StyleSheet.hairlineWidth}
+            borderColor={palette.border}
+            transition="quickest"
+            pressStyle={{ opacity: 0.6, scale: 0.94 }}
+            onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={20} color={palette.text} />
+          </XStack>
 
-          <XStack alignItems="center" gap={10}>
-            <XStack
-              flex={1}
-              alignItems="center"
-              gap={8}
-              height={46}
-              paddingHorizontal={14}
-              borderRadius={23}
-              backgroundColor={palette.card}
-              borderWidth={StyleSheet.hairlineWidth}
-              borderColor={palette.border}>
-              <Ionicons name="search" size={17} color={palette.textTertiary} />
-              <TextInput
-                ref={inputRef}
-                value={query}
-                onChangeText={setQuery}
-                onSubmitEditing={() => void commitSearch(query)}
-                placeholder="歌曲、歌手、专辑"
-                placeholderTextColor={palette.textTertiary}
-                returnKeyType="search"
-                autoCorrect={false}
-                style={[styles.input, { color: palette.text }]}
-              />
-              {query ? (
-                <XStack
-                  width={22}
-                  height={22}
-                  borderRadius={11}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor={palette.cardAlt}
-                  pressStyle={{ opacity: 0.6 }}
-                  onPress={resetSearch}>
-                  <Ionicons name="close" size={13} color={palette.textSecondary} />
-                </XStack>
-              ) : null}
-            </XStack>
-
-            {results.keyword || query ? (
-              <Text
-                color={palette.accent}
-                fontSize={14.5}
-                fontWeight="600"
+          <XStack
+            flex={1}
+            alignItems="center"
+            gap={8}
+            height={44}
+            paddingHorizontal={14}
+            borderRadius={22}
+            backgroundColor={palette.card}
+            borderWidth={StyleSheet.hairlineWidth}
+            borderColor={palette.border}>
+            <Ionicons name="search" size={17} color={palette.textTertiary} />
+            <TextInput
+              ref={inputRef}
+              value={query}
+              onChangeText={setQuery}
+              onSubmitEditing={() => void commitSearch(query)}
+              placeholder="歌曲、歌手、专辑"
+              placeholderTextColor={palette.textTertiary}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoFocus
+              style={[styles.input, { color: palette.text }]}
+            />
+            {query ? (
+              <XStack
+                width={22}
+                height={22}
+                borderRadius={11}
+                alignItems="center"
+                justifyContent="center"
+                backgroundColor={palette.cardAlt}
                 pressStyle={{ opacity: 0.6 }}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  resetSearch();
-                }}
-                suppressHighlighting>
-                取消
-              </Text>
+                onPress={resetSearch}>
+                <Ionicons name="close" size={13} color={palette.textSecondary} />
+              </XStack>
             ) : null}
           </XStack>
-        </YStack>
+        </XStack>
 
         {showSuggestions ? (
           <YStack paddingHorizontal={16} gap={2}>
@@ -303,7 +302,7 @@ export default function SearchScreen() {
               showsVerticalScrollIndicator={false}
               onEndReachedThreshold={0.4}
               onEndReached={() => void loadMore()}
-              contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: dockInset }}
+              contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: listBottomInset }}
               ListHeaderComponent={
                 <XStack
                   alignItems="center"
@@ -383,6 +382,14 @@ export default function SearchScreen() {
           </YStack>
         )}
       </YStack>
+
+      <RNView
+        pointerEvents="box-none"
+        style={[styles.miniDock, { bottom: Math.max(insets.bottom, 12) }]}>
+        <RNView pointerEvents="box-none" style={styles.miniDockInner}>
+          <MiniPlayer />
+        </RNView>
+      </RNView>
     </View>
   );
 }
@@ -393,5 +400,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     paddingVertical: 0,
+  },
+  miniDock: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+  },
+  miniDockInner: {
+    width: '100%',
+    maxWidth: 680,
   },
 });

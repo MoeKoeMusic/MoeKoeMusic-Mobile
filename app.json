@@ -2,7 +2,7 @@
   "expo": {
     "name": "MoeKoe",
     "slug": "moekoe",
-    "version": "1.6.7",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "moekoe",
@@ -12,7 +12,7 @@
     },
     "ios": {
       "bundleIdentifier": "cn.moekoe.music",
-      "buildNumber": "1.6.7",
+      "buildNumber": "1.0.0",
       "supportsTablet": false,
       "infoPlist": {
         "UIBackgroundModes": ["audio"],
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "cn.moekoe.music",
-      "versionCode": 10607,
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#F6F9FF",
         "foregroundImage": "./assets/images/android-icon-foreground.png"

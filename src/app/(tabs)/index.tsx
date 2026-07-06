@@ -25,15 +25,6 @@ type ScreenState = {
   errorMessage: string;
 };
 
-function greetingText(): string {
-  const hour = new Date().getHours();
-  if (hour < 5) return '夜深了';
-  if (hour < 11) return '早上好';
-  if (hour < 14) return '中午好';
-  if (hour < 18) return '下午好';
-  return '晚上好';
-}
-
 export default function HomeScreen() {
   const palette = usePalette();
   const router = useRouter();
@@ -173,18 +164,6 @@ export default function HomeScreen() {
             paddingBottom: dockInset,
           },
         ]}>
-        <XStack alignItems="center" justifyContent="space-between" paddingHorizontal={2}>
-          <YStack gap={3}>
-            <Text color={palette.text} fontSize={26} fontWeight="800" letterSpacing={0.3}>
-              {greetingText()}
-            </Text>
-            <Text color={palette.textTertiary} fontSize={13}>
-              来听点喜欢的音乐吧
-            </Text>
-          </YStack>
-          <Image source={require('@/assets/images/icon.png')} style={styles.brandMark} contentFit="cover" />
-        </XStack>
-
         <XStack
           alignItems="center"
           gap={9}
@@ -365,11 +344,6 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: 16,
     gap: 22,
-  },
-  brandMark: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
   },
   bannerList: {
     gap: 12,

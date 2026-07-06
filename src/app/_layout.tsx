@@ -57,6 +57,25 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="rank/[id]"
+            options={{
+              animation: 'slide_from_right',
+            }}
+          />
+          <Stack.Screen
+            name="album/[id]"
+            options={{
+              animation: 'slide_from_right',
+            }}
+          />
+          <Stack.Screen
+            name="search"
+            options={{
+              animation: 'fade_from_bottom',
+              animationDuration: 220,
+            }}
+          />
+          <Stack.Screen
             name="login"
             options={{
               presentation: 'modal',

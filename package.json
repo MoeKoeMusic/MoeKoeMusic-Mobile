@@ -1,7 +1,7 @@
 {
   "name": "moekoe",
   "main": "expo-router/entry",
-  "version": "1.6.7",
+  "version": "1.0.0",
   "description": "MoeKoe mobile app",
   "dependencies": {
     "@expo/ui": "~57.0.3",
