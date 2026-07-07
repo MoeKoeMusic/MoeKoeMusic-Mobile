@@ -1,0 +1,228 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    env:
+      GRADLE_OPTS: -Xmx4096m -XX:MaxMetaspaceSize=1024m
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix api install
+          npm run generate:mobile-api
+
+      # 用 tag 名同步 app.json 的版本号（v1.2.3 -> 1.2.3），versionCode 取自增的运行编号
+      - name: Sync app version with tag
+        if: github.ref_type == 'tag'
+        env:
+          VERSION: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+          const version = process.env.VERSION.replace(/^v/, '');
+          config.expo.version = version;
+          config.expo.ios.buildNumber = version;
+          config.expo.android.versionCode = Number(process.env.RUN_NUMBER);
+          fs.writeFileSync('app.json', JSON.stringify(config, null, 2) + '\n');
+          EOF
+
+      - name: Prebuild Android project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      # 配置了 ANDROID_KEYSTORE_BASE64 等 secrets 时用正式密钥重签名，否则保留 debug 签名
+      - name: Re-sign APK with release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "未配置签名密钥 secrets，跳过重签名（APK 使用 debug 签名）"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > release.keystore
+          BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+          "$BUILD_TOOLS_DIR/apksigner" sign \
+            --ks release.keystore \
+            --ks-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --key-pass "pass:$ANDROID_KEY_PASSWORD" \
+            android/app/build/outputs/apk/release/app-release.apk
+          rm -f release.keystore
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            "dist/MoeKoeMusic-Mobile-${VERSION}-android.apk"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: dist/*
+
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix api install
+          npm run generate:mobile-api
+
+      - name: Sync app version with tag
+        if: github.ref_type == 'tag'
+        env:
+          VERSION: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+          const version = process.env.VERSION.replace(/^v/, '');
+          config.expo.version = version;
+          config.expo.ios.buildNumber = version;
+          config.expo.android.versionCode = Number(process.env.RUN_NUMBER);
+          fs.writeFileSync('app.json', JSON.stringify(config, null, 2) + '\n');
+          EOF
+
+      - name: Prebuild iOS project
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install
+
+      # 关闭代码签名构建 archive，产出未签名 IPA，供用户自行签名安装
+      - name: Build unsigned archive
+        run: |
+          xcodebuild archive \
+            -workspace ios/MoeKoe.xcworkspace \
+            -scheme MoeKoe \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/MoeKoe.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p dist Payload
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+          cp -R "build/MoeKoe.xcarchive/Products/Applications/MoeKoe.app" Payload/
+          zip -qry "dist/MoeKoeMusic-Mobile-${VERSION}-ios-unsigned.ipa" Payload
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: dist/*
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [build-android, build-ios]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # 生成上一个 tag 到当前 tag 之间的提交记录作为更新日志
+      - name: Generate changelog
+        run: |
+          CURRENT_TAG="$GITHUB_REF_NAME"
+          PREV_TAG=$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null || true)
+          {
+            echo "## 📋 更新日志"
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              git log --no-merges --pretty=format:"- %s (%h)" "${PREV_TAG}..${CURRENT_TAG}"
+              echo ""
+              echo ""
+              echo "**完整对比**: [\`${PREV_TAG}...${CURRENT_TAG}\`](https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${CURRENT_TAG})"
+            else
+              git log --no-merges --pretty=format:"- %s (%h)" "$CURRENT_TAG"
+              echo ""
+            fi
+            echo ""
+            echo "## 📦 安装说明"
+            echo ""
+            echo "- **Android**：直接下载安装 \`*-android.apk\`"
+            echo "- **iOS**：\`*-ios-unsigned.ipa\` 为未签名包，需自行签名后侧载安装（可使用 AltStore / SideStore / Sideloadly / 爱思助手等工具）"
+          } > RELEASE_CHANGELOG.md
+          cat RELEASE_CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MoeKoe Music Mobile ${{ github.ref_name }}
+          body_path: RELEASE_CHANGELOG.md
+          files: dist/*
+          fail_on_unmatched_files: true
