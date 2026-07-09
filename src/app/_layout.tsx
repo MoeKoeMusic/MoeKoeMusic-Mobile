@@ -1,44 +1,52 @@
 import '@/global.css';
 
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from 'react-native';
+import { useEffect, useMemo } from 'react';
 import { TamaguiProvider } from 'tamagui';
 
-import { Palette } from '@/constants/theme';
+import { hydrateSettings, useSettingsHydrated } from '@/features/settings/store';
+import { useEffectiveScheme, usePalette } from '@/hooks/use-palette';
 import { tamaguiConfig } from '../../tamagui.config';
 
-const navLightTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    primary: Palette.light.accent,
-    background: Palette.light.background,
-    card: Palette.light.card,
-    text: Palette.light.text,
-    border: 'transparent',
-  },
-};
-
-const navDarkTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    primary: Palette.dark.accent,
-    background: Palette.dark.background,
-    card: Palette.dark.card,
-    text: Palette.dark.text,
-    border: 'transparent',
-  },
-};
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+void hydrateSettings();
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const hydrated = useSettingsHydrated();
+  const palette = usePalette();
+  const isDark = useEffectiveScheme() === 'dark';
+
+  const navTheme = useMemo(() => {
+    const base = isDark ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: palette.accent,
+        background: palette.background,
+        card: palette.card,
+        text: palette.text,
+        border: 'transparent',
+      },
+    };
+  }, [isDark, palette]);
+
+  useEffect(() => {
+    if (hydrated) {
+      void SplashScreen.hideAsync().catch(() => undefined);
+    }
+  }, [hydrated]);
+
+  if (!hydrated) {
+    // 原生 splash 覆盖期间完成偏好读取,首帧即正确主题。
+    return null;
+  }
 
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={isDark ? 'dark' : 'light'}>
-      <ThemeProvider value={isDark ? navDarkTheme : navLightTheme}>
+      <ThemeProvider value={navTheme}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen
@@ -82,8 +90,14 @@ export default function RootLayout() {
               animation: 'slide_from_bottom',
             }}
           />
+          <Stack.Screen
+            name="settings"
+            options={{
+              animation: 'slide_from_right',
+            }}
+          />
         </Stack>
-        <StatusBar style="auto" />
+        <StatusBar style={isDark ? 'light' : 'dark'} />
       </ThemeProvider>
     </TamaguiProvider>
   );

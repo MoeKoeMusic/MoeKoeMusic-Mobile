@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
@@ -20,7 +19,7 @@ import {
 import { MaxContentWidth } from '@/constants/theme';
 import { useDockContentInset } from '@/hooks/use-dock-inset';
 import { usePalette } from '@/hooks/use-palette';
-import { bootstrapMobileApi, clearApiSession } from '@/lib/kugou-api';
+import { bootstrapMobileApi } from '@/lib/kugou-api';
 
 type ScreenState = {
   checking: boolean;
@@ -86,8 +85,6 @@ export default function MeScreen() {
     playlists: [],
     error: '',
   });
-
-  const version = Constants.expoConfig?.version ?? '';
 
   const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     const requestId = ++requestIdRef.current;
@@ -158,22 +155,6 @@ export default function MeScreen() {
       void load('initial');
     }, [load])
   );
-
-  function confirmLogout() {
-    Alert.alert('退出登录', '将清除本机保存的登录信息', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '退出',
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            await clearApiSession();
-            await load('initial');
-          })();
-        },
-      },
-    ]);
-  }
 
   const createdPlaylists = state.playlists.filter((item) => item.isMine);
   const collectedPlaylists = state.playlists.filter((item) => !item.isMine);
@@ -370,28 +351,6 @@ export default function MeScreen() {
                   </YStack>
                 </YStack>
               ) : null}
-
-              <XStack
-                alignItems="center"
-                justifyContent="center"
-                height={48}
-                borderRadius={16}
-                backgroundColor={palette.card}
-                borderWidth={StyleSheet.hairlineWidth}
-                borderColor={palette.border}
-                transition="quickest"
-                pressStyle={{ opacity: 0.7 }}
-                onPress={confirmLogout}>
-                <Text color={palette.danger} fontSize={14.5} fontWeight="600">
-                  退出登录
-                </Text>
-              </XStack>
-
-              {version ? (
-                <Text color={palette.textTertiary} fontSize={11} textAlign="center" paddingTop={6}>
-                  MoeKoe Music v{version}
-                </Text>
-              ) : null}
             </YStack>
           </>
         ) : (
@@ -466,14 +425,32 @@ export default function MeScreen() {
               </YStack>
             )}
 
-            {version ? (
-              <Text color={palette.textTertiary} fontSize={11} textAlign="center" paddingTop={6}>
-                MoeKoe Music v{version}
-              </Text>
-            ) : null}
           </YStack>
         )}
       </ScrollView>
+
+      <XStack
+        position="absolute"
+        top={insets.top + 8}
+        right={16}
+        width={38}
+        height={38}
+        borderRadius={19}
+        alignItems="center"
+        justifyContent="center"
+        backgroundColor={palette.barSurface}
+        borderWidth={StyleSheet.hairlineWidth}
+        borderColor={palette.border}
+        shadowColor={palette.dockShadow}
+        shadowOffset={{ width: 0, height: 4 }}
+        shadowOpacity={0.12}
+        shadowRadius={10}
+        elevation={4}
+        transition="quickest"
+        pressStyle={{ opacity: 0.7, scale: 0.96 }}
+        onPress={() => router.push('/settings')}>
+        <Ionicons name="settings-outline" size={19} color={palette.text} />
+      </XStack>
     </View>
   );
 }

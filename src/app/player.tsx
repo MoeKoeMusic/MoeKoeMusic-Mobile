@@ -37,6 +37,7 @@ const MODE_ICON: Record<PlayMode, 'repeat' | 'repeat-once' | 'shuffle-variant'> 
 
 function SpinningDisc({ coverUrl, playing, size }: { coverUrl: string | null; playing: boolean; size: number }) {
   const isDark = useIsDark();
+  const palette = usePalette();
   const rotation = useSharedValue(0);
 
   useEffect(() => {
@@ -75,7 +76,7 @@ function SpinningDisc({ coverUrl, playing, size }: { coverUrl: string | null; pl
           width={15}
           height={15}
           borderRadius={8}
-          backgroundColor={isDark ? '#12131C' : '#FFFFFF'}
+          backgroundColor={palette.card}
           borderWidth={3}
           borderColor={isDark ? 'rgba(255,255,255,0.25)' : 'rgba(18, 19, 31, 0.16)'}
         />

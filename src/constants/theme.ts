@@ -53,7 +53,12 @@ export const Palette = {
   },
 } as const;
 
-export type AppPalette = (typeof Palette)['light'] | (typeof Palette)['dark'];
+export type SchemeName = 'light' | 'dark';
+
+/** Tamagui 严格样式值只接受 hex/rgba 模板字面量,不接受宽泛 string。 */
+export type PaletteColor = `#${string}` | `rgba(${string})`;
+
+export type AppPalette = { [K in keyof (typeof Palette)['light']]: PaletteColor };
 
 export const Spacing = {
   half: 2,
