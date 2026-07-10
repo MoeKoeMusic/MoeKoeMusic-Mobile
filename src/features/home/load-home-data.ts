@@ -15,7 +15,21 @@ import { bootstrapMobileApi, mobileApi } from '@/lib/kugou-api';
 export interface HomeBanner {
   id: string;
   title: string;
-  imageUrl: string | null;
+  imageUrl: string | number | null;
+  playlistGid?: string| null;
+  linkUrl?: string;
+}
+
+const MY_PLAYLIST_BANNER: HomeBanner = {
+  id: 'my-playlist',
+  title: '阿珏酱的歌单',
+  imageUrl: require('@/assets/images/banner.png'),
+  playlistGid: 'collection_3_25230245_24_0',
+};
+
+function extractLinkUrl(record: Record<string, unknown>): string | undefined {
+  const url = pickText(toRecord(record.extra).url, record.url, record.jump_url);
+  return /^https?:\/\//.test(url) ? url : undefined;
 }
 
 export type HomeSong = PlayerTrack & { note: string };
@@ -121,6 +135,8 @@ export async function loadHomeData(): Promise<HomeData> {
               id: pickStringLike(item.id) || imageUrl,
               title: title || '酷狗精选',
               imageUrl,
+              playlistGid: null,
+              linkUrl: extractLinkUrl(item),
             };
           })
           .filter((item): item is HomeBanner => Boolean(item))
@@ -220,8 +236,9 @@ export async function loadHomeData(): Promise<HomeData> {
     newSongSection.error,
   ].filter((item): item is string => Boolean(item));
 
+  const apiBanners = bannerSection.data ?? [];
   const result: HomeData = {
-    banners: bannerSection.data ?? [],
+    banners: [MY_PLAYLIST_BANNER, ...apiBanners],
     hotKeywords: hotSection.data ?? [],
     dailySongs: dailySection.data ?? [],
     playlists: playlistSection.data ?? [],
@@ -231,8 +248,9 @@ export async function loadHomeData(): Promise<HomeData> {
     updatedAt: Date.now(),
   };
 
+  // 固定轮播不算内容,避免全部接口失败时误判为加载成功
   const hasContent = Boolean(
-    result.banners.length ||
+    apiBanners.length ||
       result.dailySongs.length ||
       result.playlists.length ||
       result.rankCards.length ||

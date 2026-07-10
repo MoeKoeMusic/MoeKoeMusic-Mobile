@@ -1,12 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { startTransition, useEffect, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
+import { BannerCarousel } from '@/components/ui/banner-carousel';
 import { PlaylistCard } from '@/components/ui/playlist-card';
 import { RankCard } from '@/components/ui/rank-card';
 import { SectionHeader } from '@/components/ui/section-header';
@@ -201,36 +200,31 @@ export default function HomeScreen() {
         ) : null}
 
         {homeData.banners.length ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={bannerWidth + 12}
-            decelerationRate="fast"
-            contentContainerStyle={styles.bannerList}>
-            {homeData.banners.map((banner) => (
-              <View
-                key={banner.id}
-                width={bannerWidth}
-                height={bannerHeight}
-                borderRadius={22}
-                overflow="hidden"
-                backgroundColor={palette.cardAlt}>
-                <Image
-                  source={{ uri: banner.imageUrl ?? undefined }}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="cover"
-                  transition={220}
-                />
-                <LinearGradient
-                  colors={['transparent', 'rgba(10, 10, 16, 0.62)']}
-                  style={styles.bannerOverlay}>
-                  <Text color="#FFFFFF" fontSize={15} fontWeight="700" numberOfLines={1}>
-                    {banner.title}
-                  </Text>
-                </LinearGradient>
-              </View>
-            ))}
-          </ScrollView>
+          <BannerCarousel
+            banners={homeData.banners}
+            bannerWidth={bannerWidth}
+            bannerHeight={bannerHeight}
+            onPressBanner={(banner) => {
+              if (banner.playlistGid) {
+                router.push({
+                  pathname: '/playlist/[id]',
+                  params: {
+                    id: banner.playlistGid,
+                    name: banner.title,
+                    cover: banner.imageUrl ?? '',
+                  },
+                });
+                return;
+              }
+
+              if (banner.linkUrl) {
+                router.push({
+                  pathname: '/web',
+                  params: { url: banner.linkUrl, title: banner.title },
+                });
+              }
+            }}
+          />
         ) : null}
 
         {homeData.dailySongs.length ? (
@@ -359,18 +353,6 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: 16,
     gap: 22,
-  },
-  bannerList: {
-    gap: 12,
-  },
-  bannerOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 16,
-    paddingTop: 34,
-    paddingBottom: 12,
   },
   rankList: {
     gap: 14,
