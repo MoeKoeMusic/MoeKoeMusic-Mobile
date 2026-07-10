@@ -86,10 +86,10 @@ export function MiniPlayer() {
         borderColor={palette.border}
         backgroundColor={palette.barSurface}
         shadowColor={palette.dockShadow}
-        shadowOffset={{ width: 0, height: 8 }}
-        shadowOpacity={isDark ? 0.5 : 0.1}
-        shadowRadius={16}
-        elevation={8}
+        shadowOffset={{ width: 0, height: isDark ? 3 : 8 }}
+        shadowOpacity={isDark ? 0.18 : 0.1}
+        shadowRadius={isDark ? 8 : 16}
+        elevation={isDark ? 0 : 8}
         transition="quickest"
         pressStyle={{ scale: 0.985 }}
         onPress={() => router.push('/player')}>
