@@ -1,10 +1,14 @@
 import {
   createAudioPlayer,
   setAudioModeAsync,
+  type AudioLockScreenOptions,
+  type AudioMetadata,
   type AudioPlayer,
   type AudioStatus,
 } from 'expo-audio';
 import { useSyncExternalStore } from 'react';
+
+import { sizedImage } from '@/lib/format';
 
 import { loadLyricLines } from './lyrics';
 import { resolveSongSource } from './song-url';
@@ -87,6 +91,22 @@ let audioPlayer: AudioPlayer | null = null;
 let loadSequence = 0;
 let failStreak = 0;
 let advanceTimer: ReturnType<typeof setTimeout> | null = null;
+
+// expo-audio 单 player 的锁屏/通知栏没有上一首/下一首命令(原生侧明确移除),
+// 只有 播放暂停+进度条+±10 秒;切歌按钮需迁移原生队列(AudioPlaylist),暂不做。
+const LOCK_SCREEN_OPTIONS: AudioLockScreenOptions = {
+  showSeekForward: true,
+  showSeekBackward: true,
+};
+
+function lockScreenMetadataFor(track: PlayerTrack): AudioMetadata {
+  return {
+    title: track.title,
+    artist: track.artist,
+    albumTitle: track.album,
+    artworkUrl: sizedImage(track.coverUrl, 480) ?? undefined,
+  };
+}
 
 function ensureAudioPlayer(): AudioPlayer {
   if (audioPlayer) {
@@ -184,6 +204,9 @@ async function loadTrackAt(index: number, options?: { autoplay?: boolean }) {
 
     const player = ensureAudioPlayer();
     player.replace({ uri: source.uri });
+    // 每次换曲重新激活即可同步刷新锁屏元数据;Android 侧同时启动前台服务,
+    // 保证息屏后台连续播放不受系统 3 分钟限制。
+    player.setActiveForLockScreen(true, lockScreenMetadataFor(track), LOCK_SCREEN_OPTIONS);
     if (options?.autoplay !== false) {
       player.play();
     }
@@ -383,6 +406,7 @@ export const playerActions = {
     }
 
     audioPlayer?.pause();
+    audioPlayer?.clearLockScreenControls();
     playerStore.setState({
       ...INITIAL_PLAYER_STATE,
       mode: playerStore.getState().mode,
