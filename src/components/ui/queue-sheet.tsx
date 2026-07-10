@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Sheet, Text, XStack, YStack } from 'tamagui';
 
 import { playerActions, usePlayer } from '@/features/player/store';
@@ -15,17 +17,29 @@ const MODE_LABEL: Record<string, string> = {
   single: '单曲循环',
 };
 
+const QUEUE_ITEM_HEIGHT = 58;
+const QUEUE_HEADER_HEIGHT = 78;
+const QUEUE_MAX_HEIGHT_RATIO = 0.68;
+
 export function QueueSheet({ open, onOpenChange }: QueueSheetProps) {
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
   const { queue, index, mode } = usePlayer();
+  const frameBottomPadding = Math.max(insets.bottom, 16) + 6;
+  const maxListHeight = Math.max(
+    QUEUE_ITEM_HEIGHT * 3,
+    height * QUEUE_MAX_HEIGHT_RATIO - QUEUE_HEADER_HEIGHT - frameBottomPadding
+  );
+  const listContentHeight = queue.length * QUEUE_ITEM_HEIGHT;
+  const listScrollable = listContentHeight > maxListHeight;
 
   return (
     <Sheet
       modal={false}
       open={open}
       onOpenChange={onOpenChange}
-      snapPoints={[68]}
-      snapPointsMode="percent"
+      snapPointsMode="fit"
       dismissOnSnapToBottom
       transition="medium"
       zIndex={100000}>
@@ -41,7 +55,7 @@ export function QueueSheet({ open, onOpenChange }: QueueSheetProps) {
         borderTopLeftRadius={26}
         borderTopRightRadius={26}
         paddingTop="$3"
-        paddingBottom="$4">
+        paddingBottom={frameBottomPadding}>
         <XStack
           alignItems="center"
           justifyContent="space-between"
@@ -75,7 +89,13 @@ export function QueueSheet({ open, onOpenChange }: QueueSheetProps) {
           </XStack>
         </XStack>
 
-        <Sheet.ScrollView showsVerticalScrollIndicator={false}>
+        <Sheet.ScrollView
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={listScrollable}
+          bounces={listScrollable}
+          alwaysBounceVertical={false}
+          overScrollMode="never"
+          style={{ maxHeight: maxListHeight }}>
           <YStack paddingHorizontal="$3" paddingBottom="$4" gap={2}>
             {queue.map((track, itemIndex) => {
               const active = itemIndex === index;

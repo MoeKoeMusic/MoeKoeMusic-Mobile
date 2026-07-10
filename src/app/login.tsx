@@ -183,6 +183,8 @@ export default function LoginScreen() {
                 placeholderTextColor={palette.textTertiary}
                 keyboardType="number-pad"
                 textContentType="telephoneNumber"
+                multiline={false}
+                scrollEnabled={false}
                 editable={!loggingIn}
                 style={[styles.input, { color: palette.text }]}
               />
@@ -206,6 +208,8 @@ export default function LoginScreen() {
                   placeholder="验证码"
                   placeholderTextColor={palette.textTertiary}
                   keyboardType="number-pad"
+                  multiline={false}
+                  scrollEnabled={false}
                   editable={!loggingIn}
                   style={[styles.input, { color: palette.text }]}
                 />
@@ -307,8 +311,12 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    height: '100%',
     fontSize: 15.5,
     fontWeight: '500',
+    lineHeight: 20,
+    includeFontPadding: false,
     paddingVertical: 0,
+    textAlignVertical: 'center',
   },
 });

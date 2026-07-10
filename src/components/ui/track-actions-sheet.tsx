@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { StyleSheet, TextInput } from 'react-native';
+import { Modal, StyleSheet, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Sheet, Spinner, Text, XStack, YStack } from 'tamagui';
 
@@ -98,87 +98,95 @@ export function CreatePlaylistSheet({
   }
 
   return (
-    <Sheet
-      modal={false}
-      open={open}
-      onOpenChange={onOpenChange}
-      snapPointsMode="fit"
-      dismissOnSnapToBottom
-      moveOnKeyboardChange
-      transition="medium"
-      zIndex={110000}>
-      <Sheet.Overlay
-        transition="quick"
-        backgroundColor="rgba(8, 8, 14, 0.42)"
-        enterStyle={{ opacity: 0 }}
-        exitStyle={{ opacity: 0 }}
-      />
-      <Sheet.Handle backgroundColor={palette.cardAlt} width={40} alignSelf="center" />
-      <Sheet.Frame
-        backgroundColor={palette.card}
-        borderTopLeftRadius={26}
-        borderTopRightRadius={26}
-        paddingTop="$3"
-        paddingHorizontal="$4"
-        paddingBottom={Math.max(insets.bottom, 16) + 8}>
-        <YStack gap={16}>
-          <Text color={palette.text} fontSize={17} fontWeight="700">
-            新建歌单
-          </Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="歌单名称"
-            placeholderTextColor={palette.textTertiary}
-            autoFocus
-            maxLength={40}
-            returnKeyType="done"
-            onSubmitEditing={() => void handleCreate()}
-            style={[
-              styles.input,
-              {
-                color: palette.text,
-                backgroundColor: palette.cardAlt,
-                borderColor: palette.border,
-              },
-            ]}
-          />
-          <XStack gap={12}>
-            <XStack
-              flex={1}
-              height={44}
-              alignItems="center"
-              justifyContent="center"
-              borderRadius={22}
-              backgroundColor={palette.cardAlt}
-              transition="quickest"
-              pressStyle={{ opacity: 0.7 }}
-              onPress={() => onOpenChange(false)}>
-              <Text color={palette.textSecondary} fontSize={14.5} fontWeight="600">
-                取消
-              </Text>
+    <Modal
+      visible={open}
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      animationType="none"
+      onRequestClose={() => onOpenChange(false)}>
+      <Sheet
+        modal={false}
+        open={open}
+        onOpenChange={onOpenChange}
+        snapPointsMode="fit"
+        dismissOnSnapToBottom
+        moveOnKeyboardChange
+        transition="medium"
+        zIndex={110000}>
+        <Sheet.Overlay
+          transition="quick"
+          backgroundColor="rgba(8, 8, 14, 0.42)"
+          enterStyle={{ opacity: 0 }}
+          exitStyle={{ opacity: 0 }}
+        />
+        <Sheet.Handle backgroundColor={palette.cardAlt} width={40} alignSelf="center" />
+        <Sheet.Frame
+          backgroundColor={palette.card}
+          borderTopLeftRadius={26}
+          borderTopRightRadius={26}
+          paddingTop="$3"
+          paddingHorizontal="$4"
+          paddingBottom={Math.max(insets.bottom, 16) + 8}>
+          <YStack gap={16}>
+            <Text color={palette.text} fontSize={17} fontWeight="700">
+              新建歌单
+            </Text>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="歌单名称"
+              placeholderTextColor={palette.textTertiary}
+              autoFocus
+              maxLength={40}
+              returnKeyType="done"
+              onSubmitEditing={() => void handleCreate()}
+              style={[
+                styles.input,
+                {
+                  color: palette.text,
+                  backgroundColor: palette.cardAlt,
+                  borderColor: palette.border,
+                },
+              ]}
+            />
+            <XStack gap={12}>
+              <XStack
+                flex={1}
+                height={44}
+                alignItems="center"
+                justifyContent="center"
+                borderRadius={22}
+                backgroundColor={palette.cardAlt}
+                transition="quickest"
+                pressStyle={{ opacity: 0.7 }}
+                onPress={() => onOpenChange(false)}>
+                <Text color={palette.textSecondary} fontSize={14.5} fontWeight="600">
+                  取消
+                </Text>
+              </XStack>
+              <XStack
+                flex={1}
+                height={44}
+                alignItems="center"
+                justifyContent="center"
+                gap={8}
+                borderRadius={22}
+                backgroundColor={palette.accent}
+                opacity={name.trim() && !busy ? 1 : 0.5}
+                transition="quickest"
+                pressStyle={{ opacity: 0.85 }}
+                onPress={() => void handleCreate()}>
+                {busy ? <Spinner size="small" color={palette.onAccent} /> : null}
+                <Text color={palette.onAccent} fontSize={14.5} fontWeight="700">
+                  创建
+                </Text>
+              </XStack>
             </XStack>
-            <XStack
-              flex={1}
-              height={44}
-              alignItems="center"
-              justifyContent="center"
-              gap={8}
-              borderRadius={22}
-              backgroundColor={palette.accent}
-              opacity={name.trim() && !busy ? 1 : 0.5}
-              transition="quickest"
-              pressStyle={{ opacity: 0.85 }}
-              onPress={() => void handleCreate()}>
-              {busy ? <Spinner size="small" color={palette.onAccent} /> : null}
-              <Text color={palette.onAccent} fontSize={14.5} fontWeight="700">
-                创建
-              </Text>
-            </XStack>
-          </XStack>
-        </YStack>
-      </Sheet.Frame>
-    </Sheet>
+          </YStack>
+        </Sheet.Frame>
+      </Sheet>
+    </Modal>
   );
 }
 
@@ -191,7 +199,7 @@ export type TrackRemovalContext = {
 
 /**
  * 歌曲操作面板:喜欢 / 收藏到歌单 / 分享,在自己歌单上下文里额外提供"从歌单移除"。
- * modal={false} 内联渲染,原生 modal 页(/player)内也能正常弹出。
+ * 原生 Modal 承载 Sheet，避免被 TabBar / MiniPlayer 这类页面浮层盖住。
  */
 export function TrackActionsSheet({
   open,
@@ -275,29 +283,36 @@ export function TrackActionsSheet({
 
   return (
     <>
-      <Sheet
-        modal={false}
-        open={open}
-        onOpenChange={onOpenChange}
-        snapPointsMode="fit"
-        dismissOnSnapToBottom
-        transition="medium"
-        zIndex={100000}>
-        <Sheet.Overlay
-          transition="quick"
-          backgroundColor="rgba(8, 8, 14, 0.42)"
-          enterStyle={{ opacity: 0 }}
-          exitStyle={{ opacity: 0 }}
-        />
-        <Sheet.Handle backgroundColor={palette.cardAlt} width={40} alignSelf="center" />
-        <Sheet.Frame
-          backgroundColor={palette.card}
-          borderTopLeftRadius={26}
-          borderTopRightRadius={26}
-          paddingTop="$3"
-          paddingBottom={Math.max(insets.bottom, 16) + 6}>
-          {track ? (
-            <YStack paddingHorizontal="$3">
+      <Modal
+        visible={open}
+        transparent
+        statusBarTranslucent
+        navigationBarTranslucent
+        animationType="none"
+        onRequestClose={() => onOpenChange(false)}>
+        <Sheet
+          modal={false}
+          open={open}
+          onOpenChange={onOpenChange}
+          snapPointsMode="fit"
+          dismissOnSnapToBottom
+          transition="medium"
+          zIndex={100000}>
+          <Sheet.Overlay
+            transition="quick"
+            backgroundColor="rgba(8, 8, 14, 0.42)"
+            enterStyle={{ opacity: 0 }}
+            exitStyle={{ opacity: 0 }}
+          />
+          <Sheet.Handle backgroundColor={palette.cardAlt} width={40} alignSelf="center" />
+          <Sheet.Frame
+            backgroundColor={palette.card}
+            borderTopLeftRadius={26}
+            borderTopRightRadius={26}
+            paddingTop="$3"
+            paddingBottom={Math.max(insets.bottom, 16) + 6}>
+            {track ? (
+              <YStack paddingHorizontal="$3">
               <XStack
                 alignItems="center"
                 gap={12}
@@ -420,10 +435,11 @@ export function TrackActionsSheet({
                   </Sheet.ScrollView>
                 </YStack>
               )}
-            </YStack>
-          ) : null}
-        </Sheet.Frame>
-      </Sheet>
+              </YStack>
+            ) : null}
+          </Sheet.Frame>
+        </Sheet>
+      </Modal>
 
       <CreatePlaylistSheet
         open={createOpen}
