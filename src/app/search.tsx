@@ -7,6 +7,7 @@ import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
 import { MiniPlayer, MINI_PLAYER_HEIGHT } from '@/components/ui/mini-player';
 import { SongListItem } from '@/components/ui/song-list-item';
+import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { MaxContentWidth } from '@/constants/theme';
 import { playerActions, useHasTrack, usePlayer } from '@/features/player/store';
 import type { PlayerTrack } from '@/features/player/types';
@@ -53,6 +54,7 @@ export default function SearchScreen() {
   const [hotKeywords, setHotKeywords] = useState<SearchKeyword[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [results, setResults] = useState<ResultsState>(EMPTY_RESULTS);
+  const [actionTrack, setActionTrack] = useState<PlayerTrack | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -336,6 +338,7 @@ export default function SearchScreen() {
                   track={item}
                   active={item.hash === activeHash}
                   onPress={() => void playerActions.playTracks(results.tracks, index)}
+                  onMore={() => setActionTrack(item)}
                 />
               )}
             />
@@ -390,6 +393,16 @@ export default function SearchScreen() {
           <MiniPlayer />
         </RNView>
       </RNView>
+
+      <TrackActionsSheet
+        open={Boolean(actionTrack)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionTrack(null);
+          }
+        }}
+        track={actionTrack}
+      />
     </View>
   );
 }

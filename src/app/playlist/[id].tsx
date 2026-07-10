@@ -9,7 +9,9 @@ import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 import { Artwork } from '@/components/ui/artwork';
 import { MiniPlayer, MINI_PLAYER_HEIGHT } from '@/components/ui/mini-player';
 import { SongListItem } from '@/components/ui/song-list-item';
+import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { MaxContentWidth } from '@/constants/theme';
+import { libraryActions, useLibrary } from '@/features/library/store';
 import { fetchPlaylistTracks, type PlaylistInfo } from '@/features/playlist/playlist-api';
 import { playerActions, useHasTrack, usePlayer } from '@/features/player/store';
 import { useIsDark, usePalette } from '@/hooks/use-palette';
@@ -45,6 +47,27 @@ export default function PlaylistScreen() {
     loadingMore: false,
     error: '',
   });
+  const [actionTrack, setActionTrack] = useState<PlayerTrack | null>(null);
+
+  const library = useLibrary();
+  // 自己的歌单(含"我喜欢")才允许移除歌曲;listid 是写操作专用 ID
+  const ownPlaylist = library.playlists.find((item) => item.gid === playlistId && item.isMine);
+
+  useEffect(() => {
+    void libraryActions.ensure().catch(() => undefined);
+  }, []);
+
+  function handleTrackRemoved(removed: PlayerTrack) {
+    setState((current) => ({
+      ...current,
+      tracks: current.tracks.filter((item) =>
+        removed.fileid ? item.fileid !== removed.fileid : item.hash !== removed.hash
+      ),
+      info: current.info
+        ? { ...current.info, count: Math.max(0, current.info.count - 1) }
+        : current.info,
+    }));
+  }
 
   useEffect(() => {
     void loadPage(1);
@@ -235,8 +258,24 @@ export default function PlaylistScreen() {
             rank={index + 1}
             active={item.hash === activeHash}
             onPress={() => void playerActions.playTracks(state.tracks, index)}
+            onMore={() => setActionTrack(item)}
           />
         )}
+      />
+
+      <TrackActionsSheet
+        open={Boolean(actionTrack)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionTrack(null);
+          }
+        }}
+        track={actionTrack}
+        removal={
+          ownPlaylist
+            ? { listid: ownPlaylist.listid, onRemoved: handleTrackRemoved }
+            : undefined
+        }
       />
 
       <RNView

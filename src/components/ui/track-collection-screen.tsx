@@ -9,6 +9,7 @@ import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 import { Artwork } from '@/components/ui/artwork';
 import { MiniPlayer, MINI_PLAYER_HEIGHT } from '@/components/ui/mini-player';
 import { SongListItem } from '@/components/ui/song-list-item';
+import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { MaxContentWidth } from '@/constants/theme';
 import { playerActions, useHasTrack, usePlayer } from '@/features/player/store';
 import type { PlayerTrack } from '@/features/player/types';
@@ -67,6 +68,7 @@ export function TrackCollectionScreen({
     loadingMore: false,
     error: '',
   });
+  const [actionTrack, setActionTrack] = useState<PlayerTrack | null>(null);
 
   useEffect(() => {
     void loadTracks(1);
@@ -252,8 +254,19 @@ export function TrackCollectionScreen({
             rank={showRank ? index + 1 : undefined}
             active={item.hash === activeHash}
             onPress={() => void playerActions.playTracks(state.tracks, index)}
+            onMore={() => setActionTrack(item)}
           />
         )}
+      />
+
+      <TrackActionsSheet
+        open={Boolean(actionTrack)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionTrack(null);
+          }
+        }}
+        track={actionTrack}
       />
 
       <RNView

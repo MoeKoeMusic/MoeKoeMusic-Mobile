@@ -64,6 +64,7 @@ export async function fetchPlaylistTracks(
         durationMs: normalizeDurationMs(item.timelen),
         vip: pickNumber(item.privilege) >= 10 || undefined,
         quality: detectAudioQuality(item),
+        fileid: pickStringLike(item.fileid) || undefined,
       };
     })
     .filter((item): item is PlayerTrack => Boolean(item));

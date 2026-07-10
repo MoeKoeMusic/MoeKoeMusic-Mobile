@@ -11,6 +11,8 @@ export type PlayerTrack = {
   vip?: boolean;
   /** 可用最高音质：sq=无损，hq=320k；缺省为普通音质。 */
   quality?: 'sq' | 'hq';
+  /** 歌曲在所属歌单里的实例 ID，仅来自歌单曲目接口；从歌单移除歌曲必须用它。 */
+  fileid?: string;
 };
 
 export type PlayMode = 'sequence' | 'shuffle' | 'single';

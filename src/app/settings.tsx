@@ -11,6 +11,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { ACCENT_PRESETS, getPalette, type AccentPreset } from '@/constants/accents';
 import { MaxContentWidth, type SchemeName } from '@/constants/theme';
 import { isLoggedIn } from '@/features/account/user-api';
+import { libraryActions } from '@/features/library/store';
 import { settingsActions, useSettings, type ThemeMode } from '@/features/settings/store';
 import { useEffectiveScheme, usePalette } from '@/hooks/use-palette';
 import { clearApiSession } from '@/lib/kugou-api';
@@ -136,6 +137,7 @@ export default function SettingsScreen() {
         onPress: () => {
           void (async () => {
             await clearApiSession();
+            libraryActions.reset();
             setLoggedIn(false);
           })();
         },

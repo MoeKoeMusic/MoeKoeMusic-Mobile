@@ -15,14 +15,6 @@ export type UserProfile = {
   vipLabel: string;
 };
 
-export type UserPlaylistItem = {
-  gid: string;
-  name: string;
-  coverUrl: string | null;
-  count: number;
-  isMine: boolean;
-};
-
 export function isLoggedIn(): boolean {
   const session = getApiSession();
   return Boolean(session.userid && session.userid !== '0' && session.token);
@@ -67,31 +59,4 @@ export async function fetchUserProfile(): Promise<UserProfile> {
     isVip,
     vipLabel,
   };
-}
-
-export async function fetchUserPlaylists(): Promise<UserPlaylistItem[]> {
-  await bootstrapMobileApi();
-  const response = await mobileApi.user_playlist({ page: 1, pagesize: 200 });
-  const data = toRecord(toRecord(response.body).data);
-  const session = getApiSession();
-  const myUserid = String(session.userid ?? '');
-
-  return toRecords(data.info)
-    .map<UserPlaylistItem | null>((item) => {
-      const gid = pickStringLike(item.list_create_gid);
-      const name = pickText(item.name);
-      // authors 字段存在说明是收藏的专辑，不在歌单列表展示
-      if (!gid || !name || item.authors) {
-        return null;
-      }
-
-      return {
-        gid,
-        name,
-        coverUrl: sizedImage(pickText(item.pic), 240),
-        count: pickNumber(item.count),
-        isMine: pickStringLike(item.list_create_userid) === myUserid,
-      };
-    })
-    .filter((item): item is UserPlaylistItem => Boolean(item));
 }

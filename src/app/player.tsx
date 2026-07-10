@@ -23,11 +23,15 @@ import { Slider, Spinner, Text, View, XStack, YStack } from 'tamagui';
 import { Artwork } from '@/components/ui/artwork';
 import { LyricsView } from '@/components/ui/lyrics-view';
 import { QueueSheet } from '@/components/ui/queue-sheet';
+import { showToast, ToastHost } from '@/components/ui/toast';
+import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
+import { libraryActions, useIsLiked } from '@/features/library/store';
 import { findActiveLyricIndex } from '@/features/player/lyrics';
 import { playerActions, usePlayer, usePlayerProgress } from '@/features/player/store';
 import type { PlayMode } from '@/features/player/types';
 import { useIsDark, usePalette } from '@/hooks/use-palette';
 import { formatClock } from '@/lib/format';
+import { shareTrack } from '@/lib/share';
 
 const MODE_ICON: Record<PlayMode, 'repeat' | 'repeat-once' | 'shuffle-variant'> = {
   sequence: 'repeat',
@@ -95,11 +99,35 @@ export default function PlayerScreen() {
 
   const [pageIndex, setPageIndex] = useState(0);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [likeBusy, setLikeBusy] = useState(false);
   const [dragValue, setDragValue] = useState<number | null>(null);
   const dragValueRef = useRef<number | null>(null);
   const pagerRef = useRef<ScrollView>(null);
 
   const { track, playing, loading, buffering, mode, error, lyrics, lyricsStatus } = player;
+  const liked = useIsLiked(track?.hash);
+
+  useEffect(() => {
+    // 提前加载歌单库,让心形按钮反映真实喜欢状态
+    void libraryActions.ensure().catch(() => undefined);
+  }, []);
+
+  function handleToggleLike() {
+    if (!track || likeBusy) {
+      return;
+    }
+    setLikeBusy(true);
+    libraryActions
+      .toggleLike(track)
+      .then((result) => {
+        showToast(result === 'liked' ? '已加入「我喜欢」' : '已移出「我喜欢」');
+      })
+      .catch((cause) => {
+        showToast(cause instanceof Error ? cause.message : '操作失败');
+      })
+      .finally(() => setLikeBusy(false));
+  }
 
   const shownPosition = dragValue ?? positionMs;
   const activeLyricIndex = useMemo(
@@ -242,6 +270,48 @@ export default function PlayerScreen() {
 
         {/* 进度与控制 */}
         <YStack paddingHorizontal={28} gap={compact ? 14 : 20} maxWidth={620} width="100%" alignSelf="center">
+          <XStack alignItems="center" justifyContent="center" gap={46}>
+            <XStack
+              width={40}
+              height={40}
+              alignItems="center"
+              justifyContent="center"
+              opacity={likeBusy ? 0.5 : 1}
+              transition="quickest"
+              pressStyle={{ opacity: 0.55, scale: 0.88 }}
+              onPress={handleToggleLike}>
+              <Ionicons
+                name={liked ? 'heart' : 'heart-outline'}
+                size={24}
+                color={liked ? palette.accent : palette.textSecondary}
+              />
+            </XStack>
+            <XStack
+              width={40}
+              height={40}
+              alignItems="center"
+              justifyContent="center"
+              transition="quickest"
+              pressStyle={{ opacity: 0.55, scale: 0.88 }}
+              onPress={() => setActionsOpen(true)}>
+              <MaterialCommunityIcons name="playlist-plus" size={24} color={palette.textSecondary} />
+            </XStack>
+            <XStack
+              width={40}
+              height={40}
+              alignItems="center"
+              justifyContent="center"
+              transition="quickest"
+              pressStyle={{ opacity: 0.55, scale: 0.88 }}
+              onPress={() => {
+                if (track) {
+                  void shareTrack(track);
+                }
+              }}>
+              <Ionicons name="share-social-outline" size={22} color={palette.textSecondary} />
+            </XStack>
+          </XStack>
+
           <YStack gap={7}>
             <Slider
               size="$2"
@@ -370,6 +440,13 @@ export default function PlayerScreen() {
       </YStack>
 
       <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+      <TrackActionsSheet
+        open={actionsOpen}
+        onOpenChange={setActionsOpen}
+        track={track}
+        initialView="pick"
+      />
+      <ToastHost />
     </View>
   );
 }

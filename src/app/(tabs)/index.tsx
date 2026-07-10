@@ -11,9 +11,11 @@ import { PlaylistCard } from '@/components/ui/playlist-card';
 import { RankCard } from '@/components/ui/rank-card';
 import { SectionHeader } from '@/components/ui/section-header';
 import { SongListItem } from '@/components/ui/song-list-item';
+import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { MaxContentWidth, WideBreakpoint } from '@/constants/theme';
 import { loadHomeData, type HomeData } from '@/features/home/load-home-data';
 import { playerActions, usePlayer } from '@/features/player/store';
+import type { PlayerTrack } from '@/features/player/types';
 import { useDockContentInset } from '@/hooks/use-dock-inset';
 import { usePalette } from '@/hooks/use-palette';
 import { formatApiError } from '@/lib/api-parse';
@@ -39,6 +41,7 @@ export default function HomeScreen() {
     refreshing: false,
     errorMessage: '',
   });
+  const [actionTrack, setActionTrack] = useState<PlayerTrack | null>(null);
 
   const contentWidth = Math.min(width, MaxContentWidth) - 32;
   const playlistColumns = contentWidth >= WideBreakpoint ? 3 : 2;
@@ -251,6 +254,7 @@ export default function HomeScreen() {
                   track={song}
                   active={song.hash === activeHash}
                   onPress={() => void playerActions.playTracks(homeData.dailySongs, index)}
+                  onMore={() => setActionTrack(song)}
                 />
               ))}
             </YStack>
@@ -327,12 +331,23 @@ export default function HomeScreen() {
                   track={song}
                   active={song.hash === activeHash}
                   onPress={() => void playerActions.playTracks(homeData.newSongs, index)}
+                  onMore={() => setActionTrack(song)}
                 />
               ))}
             </YStack>
           </YStack>
         ) : null}
       </ScrollView>
+
+      <TrackActionsSheet
+        open={Boolean(actionTrack)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionTrack(null);
+          }
+        }}
+        track={actionTrack}
+      />
     </View>
   );
 }

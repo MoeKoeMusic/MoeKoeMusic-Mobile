@@ -9,6 +9,7 @@ import { Artwork } from '@/components/ui/artwork';
 import { PlaylistCard } from '@/components/ui/playlist-card';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { SongListItem } from '@/components/ui/song-list-item';
+import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { MaxContentWidth, type AppPalette } from '@/constants/theme';
 import {
   fetchCategoryPlaylists,
@@ -507,6 +508,7 @@ function NewSongPane({ bottomInset }: { bottomInset: number }) {
   const { track } = usePlayer();
   const requestIdRef = useRef(0);
   const [tracks, setTracks] = useState<PlayerTrack[]>([]);
+  const [actionTrack, setActionTrack] = useState<PlayerTrack | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -567,7 +569,8 @@ function NewSongPane({ bottomInset }: { bottomInset: number }) {
   const activeHash = track?.hash;
 
   return (
-    <FlatList
+    <>
+      <FlatList
       data={loading || error ? [] : tracks}
       keyExtractor={(item, index) => `${item.hash}-${index}`}
       showsVerticalScrollIndicator={false}
@@ -622,9 +625,21 @@ function NewSongPane({ bottomInset }: { bottomInset: number }) {
           track={item}
           active={item.hash === activeHash}
           onPress={() => void playerActions.playTracks(tracks, index)}
+          onMore={() => setActionTrack(item)}
         />
       )}
-    />
+      />
+
+      <TrackActionsSheet
+        open={Boolean(actionTrack)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionTrack(null);
+          }
+        }}
+        track={actionTrack}
+      />
+    </>
   );
 }
 

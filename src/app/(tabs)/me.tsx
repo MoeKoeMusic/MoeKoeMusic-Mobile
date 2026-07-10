@@ -9,13 +9,13 @@ import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
 import { Artwork } from '@/components/ui/artwork';
 import { SectionHeader } from '@/components/ui/section-header';
+import { CreatePlaylistSheet } from '@/components/ui/track-actions-sheet';
 import {
-  fetchUserPlaylists,
   fetchUserProfile,
   isLoggedIn,
-  type UserPlaylistItem,
   type UserProfile,
 } from '@/features/account/user-api';
+import { libraryActions, useLibrary, type LibraryPlaylist } from '@/features/library/store';
 import { MaxContentWidth } from '@/constants/theme';
 import { useDockContentInset } from '@/hooks/use-dock-inset';
 import { usePalette } from '@/hooks/use-palette';
@@ -26,7 +26,6 @@ type ScreenState = {
   refreshing: boolean;
   loggedIn: boolean;
   profile: UserProfile | null;
-  playlists: UserPlaylistItem[];
   error: string;
 };
 
@@ -42,7 +41,7 @@ function PlaylistRow({
   item,
   onPress,
 }: {
-  item: UserPlaylistItem;
+  item: LibraryPlaylist;
   onPress: () => void;
 }) {
   const palette = usePalette();
@@ -82,9 +81,10 @@ export default function MeScreen() {
     refreshing: false,
     loggedIn: false,
     profile: null,
-    playlists: [],
     error: '',
   });
+  const [createOpen, setCreateOpen] = useState(false);
+  const library = useLibrary();
 
   const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     const requestId = ++requestIdRef.current;
@@ -102,6 +102,7 @@ export default function MeScreen() {
       await bootstrapMobileApi();
 
       if (!isLoggedIn()) {
+        libraryActions.reset();
         if (requestId !== requestIdRef.current) return;
         startTransition(() => {
           setState({
@@ -109,16 +110,15 @@ export default function MeScreen() {
             refreshing: false,
             loggedIn: false,
             profile: null,
-            playlists: [],
             error: '',
           });
         });
         return;
       }
 
-      const [profileResult, playlistResult] = await Promise.allSettled([
+      const [profileResult] = await Promise.allSettled([
         fetchUserProfile(),
-        fetchUserPlaylists(),
+        libraryActions.refresh(),
       ]);
 
       if (requestId !== requestIdRef.current) return;
@@ -133,7 +133,6 @@ export default function MeScreen() {
           refreshing: false,
           loggedIn: true,
           profile: profileResult.value,
-          playlists: playlistResult.status === 'fulfilled' ? playlistResult.value : [],
           error: '',
         });
       });
@@ -156,10 +155,10 @@ export default function MeScreen() {
     }, [load])
   );
 
-  const createdPlaylists = state.playlists.filter((item) => item.isMine);
-  const collectedPlaylists = state.playlists.filter((item) => !item.isMine);
+  const createdPlaylists = library.playlists.filter((item) => item.isMine);
+  const collectedPlaylists = library.playlists.filter((item) => !item.isMine);
 
-  function openPlaylist(item: UserPlaylistItem) {
+  function openPlaylist(item: LibraryPlaylist) {
     router.push({
       pathname: '/playlist/[id]',
       params: { id: item.gid, name: item.name, cover: item.coverUrl ?? '' },
@@ -318,9 +317,13 @@ export default function MeScreen() {
                 </XStack>
               ) : null}
 
-              {createdPlaylists.length ? (
-                <YStack gap={10}>
-                  <SectionHeader title="我创建的歌单" />
+              <YStack gap={10}>
+                <SectionHeader
+                  title="我创建的歌单"
+                  actionLabel="新建"
+                  onAction={() => setCreateOpen(true)}
+                />
+                {createdPlaylists.length ? (
                   <YStack
                     backgroundColor={palette.card}
                     borderRadius={20}
@@ -332,8 +335,20 @@ export default function MeScreen() {
                       <PlaylistRow key={item.gid} item={item} onPress={() => openPlaylist(item)} />
                     ))}
                   </YStack>
-                </YStack>
-              ) : null}
+                ) : (
+                  <YStack
+                    alignItems="center"
+                    paddingVertical={22}
+                    borderRadius={20}
+                    borderWidth={StyleSheet.hairlineWidth}
+                    borderColor={palette.border}
+                    backgroundColor={palette.card}>
+                    <Text color={palette.textTertiary} fontSize={12.5}>
+                      还没有自己的歌单，点右上角&quot;新建&quot;
+                    </Text>
+                  </YStack>
+                )}
+              </YStack>
 
               {collectedPlaylists.length ? (
                 <YStack gap={10}>
@@ -451,6 +466,8 @@ export default function MeScreen() {
         onPress={() => router.push('/settings')}>
         <Ionicons name="settings-outline" size={19} color={palette.text} />
       </XStack>
+
+      <CreatePlaylistSheet open={createOpen} onOpenChange={setCreateOpen} />
     </View>
   );
 }

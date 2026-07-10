@@ -12,6 +12,8 @@ type SongListItemProps = {
   active?: boolean;
   rank?: number;
   onPress: () => void;
+  /** 打开歌曲操作面板(收藏/分享等);同时作为长按行为。 */
+  onMore?: () => void;
 };
 
 export const SongListItem = memo(function SongListItem({
@@ -19,6 +21,7 @@ export const SongListItem = memo(function SongListItem({
   active = false,
   rank,
   onPress,
+  onMore,
 }: SongListItemProps) {
   const palette = usePalette();
 
@@ -32,7 +35,8 @@ export const SongListItem = memo(function SongListItem({
       backgroundColor={active ? palette.accentSoft : 'transparent'}
       transition="quickest"
       pressStyle={{ opacity: 0.65, scale: 0.985 }}
-      onPress={onPress}>
+      onPress={onPress}
+      onLongPress={onMore}>
       {typeof rank === 'number' ? (
         <Text
           width={26}
@@ -97,6 +101,23 @@ export const SongListItem = memo(function SongListItem({
         <Text color={palette.textTertiary} fontSize={12} fontVariant={['tabular-nums']}>
           {formatClock(track.durationMs)}
         </Text>
+      ) : null}
+
+      {onMore ? (
+        <XStack
+          width={30}
+          height={34}
+          marginLeft={-6}
+          alignItems="center"
+          justifyContent="center"
+          transition="quickest"
+          pressStyle={{ opacity: 0.5, scale: 0.9 }}
+          onPress={(event) => {
+            event.stopPropagation();
+            onMore();
+          }}>
+          <Ionicons name="ellipsis-vertical" size={16} color={palette.textTertiary} />
+        </XStack>
       ) : null}
     </XStack>
   );
