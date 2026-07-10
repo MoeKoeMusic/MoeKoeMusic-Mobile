@@ -2,15 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
   TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import WebView, { type WebViewMessageEvent } from 'react-native-webview';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
 import { QrCodeView } from '@/components/ui/qr-code-view';
@@ -45,6 +47,21 @@ type QrState = {
   nickname?: string;
 };
 
+type SsaVerifyState =
+  | { type: 'sms'; challenge: SsaChallenge }
+  | { type: 'tencent'; challenge: SsaChallenge; txAppId: string };
+
+type TencentCaptchaResult = {
+  ticket: string;
+  randstr: string;
+};
+
+type TencentCaptchaMessage =
+  | ({ type: 'success' } & TencentCaptchaResult)
+  | { type: 'ready' }
+  | { type: 'cancel'; ret?: number }
+  | { type: 'error'; message?: string };
+
 const LOGIN_MODES: { key: LoginMode; label: string }[] = [
   { key: 'sms', label: '验证码登录' },
   { key: 'password', label: '密码登录' },
@@ -62,6 +79,147 @@ const QR_LOGIN_URL_PREFIX = 'https://h5.kugou.com/apps/loginQRCode/html/index.ht
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 type PaletteShape = ReturnType<typeof usePalette>;
+
+function buildTencentCaptchaHtml(appId: string) {
+  const appIdLiteral = JSON.stringify(appId).replace(/</g, '\\u003c');
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #status {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: #7b8194;
+      font-size: 13px;
+      background: #fff;
+    }
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(255, 79, 137, 0.18);
+      border-top-color: #ff4f89;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    #tcaptcha_transform_dy,
+    [id^="tcaptcha_transform"],
+    .tcaptcha_transform {
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      display: block !important;
+      opacity: 1 !important;
+      overflow: hidden !important;
+      transform: none !important;
+      background: #fff !important;
+    }
+    #tcaptcha_transform_dy iframe,
+    [id^="tcaptcha_transform"] iframe,
+    .tcaptcha_transform iframe {
+      width: 100% !important;
+      height: 100% !important;
+      border: 0 !important;
+      display: block !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">
+    <div class="spinner"></div>
+    <div id="statusText">正在打开安全验证...</div>
+  </div>
+  <script>
+    (function () {
+      var appId = ${appIdLiteral};
+      var statusText = document.getElementById('statusText');
+
+      function post(payload) {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+        }
+      }
+
+      function setStatus(text) {
+        statusText.textContent = text;
+      }
+
+      function fail(message) {
+        setStatus(message);
+        post({ type: 'error', message: message });
+      }
+
+      function loadScript(src, onload, onerror) {
+        var script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = onload;
+        script.onerror = onerror;
+        document.head.appendChild(script);
+      }
+
+      function openCaptcha() {
+        if (!window.TencentCaptcha) {
+          fail('腾讯验证码加载失败');
+          return;
+        }
+
+        try {
+          var captcha = new window.TencentCaptcha(
+            appId,
+            function (res) {
+              if (Number(res && res.ret) === 0 && res.ticket && res.randstr) {
+                post({
+                  type: 'success',
+                  ticket: res.ticket,
+                  randstr: res.randstr
+                });
+                return;
+              }
+
+              post({ type: 'cancel', ret: res && res.ret });
+            },
+            { type: '', showHeader: false }
+          );
+
+          post({ type: 'ready' });
+          captcha.show();
+        } catch (error) {
+          fail(error && error.message ? error.message : '腾讯验证码打开失败');
+        }
+      }
+
+      loadScript(
+        'https://turing.captcha.qcloud.com/TCaptcha.js',
+        openCaptcha,
+        function () {
+          fail('腾讯验证码加载失败');
+        }
+      );
+    })();
+  </script>
+</body>
+</html>`;
+}
 
 function InputShell({
   palette,
@@ -132,6 +290,187 @@ function GradientButton({
   );
 }
 
+function TencentCaptchaModal({
+  visible,
+  palette,
+  txAppId,
+  run,
+  failed,
+  busy,
+  topInset,
+  bottomInset,
+  onRetry,
+  onClose,
+  onSuccess,
+  onCancel,
+  onError,
+}: {
+  visible: boolean;
+  palette: PaletteShape;
+  txAppId: string;
+  run: number;
+  failed: boolean;
+  busy: boolean;
+  topInset: number;
+  bottomInset: number;
+  onRetry: () => void;
+  onClose: () => void;
+  onSuccess: (result: TencentCaptchaResult) => void;
+  onCancel: () => void;
+  onError: (message: string) => void;
+}) {
+  const html = useMemo(() => buildTencentCaptchaHtml(txAppId), [txAppId]);
+
+  function handleMessage(event: WebViewMessageEvent) {
+    if (busy) {
+      return;
+    }
+
+    let message: TencentCaptchaMessage;
+    try {
+      message = JSON.parse(event.nativeEvent.data) as TencentCaptchaMessage;
+    } catch {
+      onError('安全验证返回异常');
+      return;
+    }
+
+    if (message.type === 'success') {
+      if (message.ticket && message.randstr) {
+        onSuccess({ ticket: message.ticket, randstr: message.randstr });
+      } else {
+        onError('安全验证返回异常');
+      }
+      return;
+    }
+
+    if (message.type === 'cancel') {
+      onCancel();
+      return;
+    }
+
+    if (message.type === 'error') {
+      onError(message.message || '腾讯验证码加载失败');
+    }
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onRequestClose={onClose}>
+      <View
+        flex={1}
+        backgroundColor={palette.background}
+        paddingTop={(Platform.OS === 'android' ? topInset : 0) + 10}
+        paddingBottom={bottomInset + 16}>
+        <XStack height={44} alignItems="center" paddingHorizontal={18}>
+          <XStack
+            width={36}
+            height={36}
+            borderRadius={18}
+            alignItems="center"
+            justifyContent="center"
+            backgroundColor={palette.cardAlt}
+            opacity={busy ? 0.55 : 1}
+            transition="quickest"
+            pressStyle={{ opacity: 0.6, scale: 0.92 }}
+            onPress={() => {
+              if (!busy) {
+                onClose();
+              }
+            }}>
+            <Ionicons name="close" size={19} color={palette.textSecondary} />
+          </XStack>
+          <Text flex={1} color={palette.text} fontSize={15} fontWeight="700" textAlign="center">
+            滑块安全验证
+          </Text>
+          <View width={36} />
+        </XStack>
+
+        {failed ? (
+          <YStack flex={1} alignItems="center" justifyContent="center" gap={14} padding={28}>
+            <XStack
+              width={52}
+              height={52}
+              borderRadius={26}
+              alignItems="center"
+              justifyContent="center"
+              backgroundColor={palette.cardAlt}>
+              <Ionicons name="alert-circle-outline" size={28} color={palette.danger} />
+            </XStack>
+            <YStack alignItems="center" gap={6}>
+              <Text color={palette.text} fontSize={16} fontWeight="700">
+                滑块验证未完成
+              </Text>
+              <Text color={palette.textTertiary} fontSize={12.5} textAlign="center" lineHeight={18}>
+                请重新打开验证码后继续验证
+              </Text>
+            </YStack>
+            <YStack width="100%" maxWidth={360} gap={10} marginTop={12}>
+              <GradientButton
+                palette={palette}
+                label="重新打开验证"
+                busy={false}
+                disabled={busy}
+                onPress={onRetry}
+              />
+              <XStack
+                height={44}
+                alignItems="center"
+                justifyContent="center"
+                borderRadius={16}
+                backgroundColor={palette.cardAlt}
+                transition="quickest"
+                pressStyle={{ opacity: 0.6 }}
+                onPress={onClose}>
+                <Text color={palette.textSecondary} fontSize={13.5} fontWeight="600">
+                  返回重新登录
+                </Text>
+              </XStack>
+            </YStack>
+          </YStack>
+        ) : (
+          <View flex={1} marginTop={8} backgroundColor={palette.background}>
+            <WebView
+              key={`${txAppId}-${run}`}
+              originWhitelist={['*']}
+              source={{ html, baseUrl: 'https://turing.captcha.qcloud.com/' }}
+              javaScriptEnabled
+              domStorageEnabled
+              thirdPartyCookiesEnabled
+              setSupportMultipleWindows={false}
+              scrollEnabled={false}
+              onMessage={handleMessage}
+              onError={() => onError('腾讯验证码加载失败')}
+              style={styles.captchaWebView}
+            />
+
+            {busy ? (
+              <YStack
+                position="absolute"
+                top={0}
+                left={0}
+                right={0}
+                bottom={0}
+                alignItems="center"
+                justifyContent="center"
+                gap={10}
+                backgroundColor="rgba(255, 255, 255, 0.82)">
+                <Spinner size="large" color={palette.accent} />
+                <Text color="#6E7386" fontSize={13.5} fontWeight="600">
+                  正在提交验证...
+                </Text>
+              </YStack>
+            ) : null}
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
 export default function LoginScreen() {
   const palette = usePalette();
   const router = useRouter();
@@ -158,10 +497,12 @@ export default function LoginScreen() {
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [passwordLoggingIn, setPasswordLoggingIn] = useState(false);
-  const [ssa, setSsa] = useState<SsaChallenge | null>(null);
+  const [ssa, setSsa] = useState<SsaVerifyState | null>(null);
   const [ssaCode, setSsaCode] = useState('');
   const [ssaCodeFocused, setSsaCodeFocused] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [captchaRun, setCaptchaRun] = useState(0);
+  const [captchaFailed, setCaptchaFailed] = useState(false);
 
   // 扫码登录
   const [qrState, setQrState] = useState<QrState>({ phase: 'loading' });
@@ -203,6 +544,7 @@ export default function LoginScreen() {
     setPendingUserid(null);
     setSsa(null);
     setSsaCode('');
+    setCaptchaFailed(false);
   }
 
   function finishLogin() {
@@ -333,7 +675,7 @@ export default function LoginScreen() {
     }
   }
 
-  /** 查询二次验证方式：32 = 短信验证码（页面内完成），23 = 腾讯滑块（App 内不可用）。 */
+  /** 查询二次验证方式：32 = 短信验证码（页面内完成），23 = 腾讯滑块。 */
   async function resolveSsaChallenge(challenge: SsaChallenge) {
     try {
       const response = await mobileApi.get_verify_info({ eventid: challenge.eventId });
@@ -341,17 +683,23 @@ export default function LoginScreen() {
       const verifyType = pickNumber(data.v_type);
 
       if (verifyType === 32) {
-        setSsa(challenge);
+        setSsa({ type: 'sms', challenge });
         setSsaCode('');
+        setCaptchaFailed(false);
         setNotice({ text: '酷狗已向该账号绑定的手机发送短信验证码', tone: 'info' });
         return;
       }
 
       if (verifyType === 23) {
-        setNotice({
-          text: '该账号触发了滑块安全验证，App 内暂不支持，请改用「验证码登录」',
-          tone: 'error',
-        });
+        const txAppId = pickText(data.txappid);
+        if (!txAppId) {
+          throw new Error('缺少腾讯验证码配置');
+        }
+
+        setSsa({ type: 'tencent', challenge, txAppId });
+        setCaptchaFailed(false);
+        setCaptchaRun((value) => value + 1);
+        setNotice({ text: '请完成滑块安全验证', tone: 'info' });
         return;
       }
 
@@ -365,7 +713,7 @@ export default function LoginScreen() {
   }
 
   async function handleVerifySsa() {
-    if (!ssa) {
+    if (ssa?.type !== 'sms') {
       return;
     }
 
@@ -380,11 +728,11 @@ export default function LoginScreen() {
 
     try {
       const response = await mobileApi.verify_user_info({
-        eventid: ssa.eventId,
+        eventid: ssa.challenge.eventId,
         v_type: 32,
         verifycode: verifyCode,
-        sid: ssa.sid,
-        edt: ssa.edt,
+        sid: ssa.challenge.sid,
+        edt: ssa.challenge.edt,
       });
       if (!isApiSuccess(response.body)) {
         throw response;
@@ -398,6 +746,72 @@ export default function LoginScreen() {
     } finally {
       setVerifying(false);
     }
+  }
+
+  async function handleVerifyTencentCaptcha(result: TencentCaptchaResult) {
+    if (ssa?.type !== 'tencent') {
+      return;
+    }
+
+    setVerifying(true);
+    setCaptchaFailed(false);
+    setNotice(null);
+
+    try {
+      const verifycode = `KGCodeTX|${JSON.stringify({
+        ticket: result.ticket,
+        randstr: result.randstr,
+        txappid: ssa.txAppId,
+      })}`;
+
+      const response = await mobileApi.verify_user_info({
+        eventid: ssa.challenge.eventId,
+        v_type: 23,
+        verifycode,
+        sid: ssa.challenge.sid,
+        edt: ssa.challenge.edt,
+      });
+      if (!isApiSuccess(response.body)) {
+        throw response;
+      }
+
+      setSsa(null);
+      await handlePasswordLogin(true);
+    } catch (error) {
+      setCaptchaFailed(true);
+      setNotice({ text: describeAuthError(error, '安全验证失败'), tone: 'error' });
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  function handleTencentCaptchaFailure(message: string) {
+    if (verifying) {
+      return;
+    }
+
+    setCaptchaFailed(true);
+    setNotice({ text: message, tone: 'error' });
+  }
+
+  function retryTencentCaptcha() {
+    if (verifying || passwordLoggingIn) {
+      return;
+    }
+
+    setCaptchaFailed(false);
+    setCaptchaRun((value) => value + 1);
+    setNotice(null);
+  }
+
+  function closeTencentCaptcha() {
+    if (verifying || passwordLoggingIn) {
+      return;
+    }
+
+    setSsa(null);
+    setCaptchaFailed(false);
+    setNotice(null);
   }
 
   async function startQrLogin(run: number) {
@@ -481,7 +895,7 @@ export default function LoginScreen() {
 
   const canSubmitSms = isValidPhone(phone.trim()) && code.trim().length >= 4 && !loggingIn;
   const canSubmitPassword = Boolean(account.trim() && password) && !passwordLoggingIn;
-  const canSubmitSsa = ssaCode.trim().length >= 4 && !verifying;
+  const canSubmitSsa = ssa?.type === 'sms' && ssaCode.trim().length >= 4 && !verifying;
 
   const qrTip =
     qrState.phase === 'loading'
@@ -793,7 +1207,7 @@ export default function LoginScreen() {
             </YStack>
           ) : null}
 
-          {mode === 'password' && ssa ? (
+          {mode === 'password' && ssa?.type === 'sms' ? (
             <YStack gap={12} marginTop={24}>
               <YStack alignItems="center" gap={8} marginBottom={4}>
                 <XStack
@@ -849,6 +1263,7 @@ export default function LoginScreen() {
                     if (!verifying && !passwordLoggingIn) {
                       setSsa(null);
                       setSsaCode('');
+                      setCaptchaFailed(false);
                       setNotice(null);
                     }
                   }}>
@@ -956,6 +1371,24 @@ export default function LoginScreen() {
           </YStack>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {ssa?.type === 'tencent' ? (
+        <TencentCaptchaModal
+          visible={mode === 'password'}
+          palette={palette}
+          txAppId={ssa.txAppId}
+          run={captchaRun}
+          failed={captchaFailed}
+          busy={verifying || passwordLoggingIn}
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+          onRetry={retryTencentCaptcha}
+          onClose={closeTencentCaptcha}
+          onSuccess={(result) => void handleVerifyTencentCaptcha(result)}
+          onCancel={() => handleTencentCaptchaFailure('已取消滑块安全验证')}
+          onError={handleTencentCaptchaFailure}
+        />
+      ) : null}
     </View>
   );
 }
@@ -990,5 +1423,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
+  },
+  captchaWebView: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
 });

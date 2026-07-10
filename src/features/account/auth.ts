@@ -20,7 +20,24 @@ function pickText(...values: unknown[]) {
 
 export function readApiMessage(body: unknown) {
   const data = toRecord(body);
-  return pickText(data.error_msg, data.errmsg, data.msg, data.message, data.error, data.info);
+  const payload = toRecord(data.data);
+  return pickText(
+    body,
+    data.error_msg,
+    data.errmsg,
+    data.msg,
+    data.message,
+    data.error,
+    data.info,
+    data.data,
+    payload.error_msg,
+    payload.errmsg,
+    payload.msg,
+    payload.message,
+    payload.error,
+    payload.info,
+    payload.data
+  );
 }
 
 export function isApiSuccess(body: unknown) {
