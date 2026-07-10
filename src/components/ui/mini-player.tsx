@@ -20,6 +20,8 @@ import { useIsDark, usePalette } from '@/hooks/use-palette';
 
 export const MINI_PLAYER_HEIGHT = 58;
 
+let lastOpenPlayerAt = 0;
+
 function ProgressHairline() {
   const palette = usePalette();
   const { positionMs, durationMs } = usePlayerProgress();
@@ -73,6 +75,15 @@ export function MiniPlayer() {
   }
 
   const busy = loading || buffering;
+  function openPlayer() {
+    const now = Date.now();
+    if (now - lastOpenPlayerAt < 800) {
+      return;
+    }
+
+    lastOpenPlayerAt = now;
+    router.push('/player');
+  }
 
   return (
     <Animated.View entering={FadeInDown.duration(260)} exiting={FadeOutDown.duration(200)}>
@@ -92,7 +103,7 @@ export function MiniPlayer() {
         elevation={isDark ? 0 : 8}
         transition="quickest"
         pressStyle={{ scale: 0.985 }}
-        onPress={() => router.push('/player')}>
+        onPress={openPlayer}>
         <Animated.View style={spinStyle}>
           <Artwork uri={track.coverUrl} size={40} circle />
         </Animated.View>
