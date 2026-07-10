@@ -5,6 +5,8 @@ import { clearSession, ensureSessionHydrated, getSessionSnapshot, mergeSessionCo
 import { createMobileRequest } from './use-axios';
 import type { CookieShape, MobileApiParams, MobileApiResult } from './types';
 
+export { createQrMatrix, type QrMatrix } from './runtime';
+
 type MobileApiClient = {
   [K in GeneratedModuleName]: (params?: MobileApiParams) => Promise<MobileApiResult>;
 };
