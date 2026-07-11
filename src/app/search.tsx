@@ -6,6 +6,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
 import { MiniPlayer, MINI_PLAYER_HEIGHT } from '@/components/ui/mini-player';
+import {
+  AlbumResultRow,
+  ArtistResultRow,
+  PlaylistResultRow,
+} from '@/components/ui/search-result-rows';
 import { SongListItem } from '@/components/ui/song-list-item';
 import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { MaxContentWidth } from '@/constants/theme';
@@ -14,14 +19,29 @@ import type { PlayerTrack } from '@/features/player/types';
 import {
   fetchHotKeywords,
   fetchSuggestions,
+  searchAlbums,
+  searchArtists,
+  searchPlaylists,
   searchSongs,
+  type SearchAlbum,
+  type SearchArtist,
   type SearchKeyword,
+  type SearchPlaylist,
+  type SearchTab,
 } from '@/features/search/search-api';
 import { usePalette } from '@/hooks/use-palette';
 
+const SEARCH_TABS: { value: SearchTab; label: string }[] = [
+  { value: 'song', label: '单曲' },
+  { value: 'special', label: '歌单' },
+  { value: 'album', label: '专辑' },
+  { value: 'author', label: '歌手' },
+];
+
 type ResultsState = {
   keyword: string;
-  tracks: PlayerTrack[];
+  tab: SearchTab;
+  items: (PlayerTrack | SearchPlaylist | SearchAlbum | SearchArtist)[];
   page: number;
   total: number;
   hasMore: boolean;
@@ -32,7 +52,8 @@ type ResultsState = {
 
 const EMPTY_RESULTS: ResultsState = {
   keyword: '',
-  tracks: [],
+  tab: 'song',
+  items: [],
   page: 0,
   total: 0,
   hasMore: false,
@@ -40,6 +61,33 @@ const EMPTY_RESULTS: ResultsState = {
   loadingMore: false,
   error: '',
 };
+
+type FetchPage = {
+  items: ResultsState['items'];
+  total: number;
+  hasMore: boolean;
+};
+
+async function fetchTabPage(tab: SearchTab, keyword: string, page: number): Promise<FetchPage> {
+  if (tab === 'song') {
+    const result = await searchSongs(keyword, page);
+    return { items: result.tracks, total: result.total, hasMore: result.hasMore };
+  }
+  if (tab === 'special') {
+    return searchPlaylists(keyword, page);
+  }
+  if (tab === 'album') {
+    return searchAlbums(keyword, page);
+  }
+  return searchArtists(keyword, page);
+}
+
+function itemKey(item: ResultsState['items'][number]): string {
+  if ('hash' in item) {
+    return item.hash;
+  }
+  return item.id;
+}
 
 export default function SearchScreen() {
   const palette = usePalette();
@@ -51,6 +99,7 @@ export default function SearchScreen() {
   const searchIdRef = useRef(0);
 
   const [query, setQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<SearchTab>('song');
   const [hotKeywords, setHotKeywords] = useState<SearchKeyword[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [results, setResults] = useState<ResultsState>(EMPTY_RESULTS);
@@ -89,21 +138,17 @@ export default function SearchScreen() {
     return () => clearTimeout(timer);
   }, [query, results.keyword]);
 
-  async function commitSearch(keyword: string) {
+  async function runSearch(keyword: string, tab: SearchTab) {
     const trimmed = keyword.trim();
     if (!trimmed) {
       return;
     }
 
-    Keyboard.dismiss();
-    setQuery(trimmed);
-    setSuggestions([]);
-
     const searchId = ++searchIdRef.current;
-    setResults({ ...EMPTY_RESULTS, keyword: trimmed, searching: true });
+    setResults({ ...EMPTY_RESULTS, keyword: trimmed, tab, searching: true });
 
     try {
-      const page = await searchSongs(trimmed, 1);
+      const page = await fetchTabPage(tab, trimmed, 1);
       if (searchId !== searchIdRef.current) {
         return;
       }
@@ -111,7 +156,8 @@ export default function SearchScreen() {
       startTransition(() => {
         setResults({
           keyword: trimmed,
-          tracks: page.tracks,
+          tab,
+          items: page.items,
           page: 1,
           total: page.total,
           hasMore: page.hasMore,
@@ -129,9 +175,32 @@ export default function SearchScreen() {
         setResults({
           ...EMPTY_RESULTS,
           keyword: trimmed,
+          tab,
           error: error instanceof Error ? error.message : '搜索失败，请稍后重试',
         });
       });
+    }
+  }
+
+  async function commitSearch(keyword: string) {
+    const trimmed = keyword.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    Keyboard.dismiss();
+    setQuery(trimmed);
+    setSuggestions([]);
+    await runSearch(trimmed, activeTab);
+  }
+
+  function changeTab(tab: SearchTab) {
+    if (tab === activeTab) {
+      return;
+    }
+    setActiveTab(tab);
+    if (results.keyword) {
+      void runSearch(results.keyword, tab);
     }
   }
 
@@ -141,21 +210,23 @@ export default function SearchScreen() {
     }
 
     const searchId = searchIdRef.current;
+    const { keyword, tab } = results;
     setResults((current) => ({ ...current, loadingMore: true }));
 
     try {
       const nextPage = results.page + 1;
-      const page = await searchSongs(results.keyword, nextPage);
+      const page = await fetchTabPage(tab, keyword, nextPage);
       if (searchId !== searchIdRef.current) {
         return;
       }
 
       startTransition(() => {
         setResults((current) => {
-          const seen = new Set(current.tracks.map((item) => item.hash));
+          const seen = new Set(current.items.map(itemKey));
+          const fresh = page.items.filter((item) => !seen.has(itemKey(item)));
           return {
             ...current,
-            tracks: [...current.tracks, ...page.tracks.filter((item) => !seen.has(item.hash))],
+            items: [...current.items, ...fresh],
             page: nextPage,
             hasMore: page.hasMore,
             loadingMore: false,
@@ -181,6 +252,8 @@ export default function SearchScreen() {
   const showSuggestions = suggestions.length > 0;
   const activeHash = track?.hash;
   const listBottomInset = insets.bottom + (hasTrack ? MINI_PLAYER_HEIGHT + 26 : 16) + 16;
+
+  const songTracks = results.tab === 'song' ? (results.items as PlayerTrack[]) : [];
 
   return (
     <View flex={1} backgroundColor={palette.background}>
@@ -246,6 +319,34 @@ export default function SearchScreen() {
           </XStack>
         </XStack>
 
+        {showResults ? (
+          <XStack paddingHorizontal={16} gap={8}>
+            {SEARCH_TABS.map((tab) => {
+              const active = tab.value === activeTab;
+              return (
+                <XStack
+                  key={tab.value}
+                  paddingHorizontal={15}
+                  paddingVertical={7}
+                  borderRadius={999}
+                  backgroundColor={active ? palette.accent : palette.card}
+                  borderWidth={StyleSheet.hairlineWidth}
+                  borderColor={active ? palette.accent : palette.border}
+                  transition="quickest"
+                  pressStyle={{ opacity: 0.7, scale: 0.97 }}
+                  onPress={() => changeTab(tab.value)}>
+                  <Text
+                    color={active ? '#FFFFFF' : palette.textSecondary}
+                    fontSize={13}
+                    fontWeight={active ? '700' : '500'}>
+                    {tab.label}
+                  </Text>
+                </XStack>
+              );
+            })}
+          </XStack>
+        ) : null}
+
         {showSuggestions ? (
           <YStack paddingHorizontal={16} gap={2}>
             {suggestions.map((suggestion) => (
@@ -283,22 +384,22 @@ export default function SearchScreen() {
                 fontSize={14}
                 fontWeight="600"
                 pressStyle={{ opacity: 0.6 }}
-                onPress={() => void commitSearch(results.keyword)}
+                onPress={() => void runSearch(results.keyword, results.tab)}
                 suppressHighlighting>
                 重试
               </Text>
             </YStack>
-          ) : !results.tracks.length ? (
+          ) : !results.items.length ? (
             <YStack flex={1} alignItems="center" justifyContent="center" gap={10}>
-              <Ionicons name="musical-note" size={38} color={palette.textTertiary} />
+              <Ionicons name="search" size={38} color={palette.textTertiary} />
               <Text color={palette.textTertiary} fontSize={13.5}>
-                没有找到相关歌曲
+                没有找到相关内容
               </Text>
             </YStack>
           ) : (
             <FlatList
-              data={results.tracks}
-              keyExtractor={(item, index) => `${item.hash}-${index}`}
+              data={results.items}
+              keyExtractor={(item, index) => `${itemKey(item)}-${index}`}
               keyboardShouldPersistTaps="handled"
               onScrollBeginDrag={Keyboard.dismiss}
               showsVerticalScrollIndicator={false}
@@ -312,18 +413,20 @@ export default function SearchScreen() {
                   paddingHorizontal={6}
                   paddingBottom={8}>
                   <Text color={palette.textTertiary} fontSize={12.5}>
-                    {results.total > 0 ? `共 ${results.total} 首` : `${results.tracks.length} 首`}
+                    {results.total > 0 ? `共 ${results.total} 条` : `${results.items.length} 条`}
                   </Text>
-                  <XStack
-                    alignItems="center"
-                    gap={5}
-                    pressStyle={{ opacity: 0.6 }}
-                    onPress={() => void playerActions.playTracks(results.tracks, 0)}>
-                    <Ionicons name="play-circle" size={17} color={palette.accent} />
-                    <Text color={palette.accent} fontSize={13.5} fontWeight="600">
-                      播放全部
-                    </Text>
-                  </XStack>
+                  {results.tab === 'song' ? (
+                    <XStack
+                      alignItems="center"
+                      gap={5}
+                      pressStyle={{ opacity: 0.6 }}
+                      onPress={() => void playerActions.playTracks(songTracks, 0)}>
+                      <Ionicons name="play-circle" size={17} color={palette.accent} />
+                      <Text color={palette.accent} fontSize={13.5} fontWeight="600">
+                        播放全部
+                      </Text>
+                    </XStack>
+                  ) : null}
                 </XStack>
               }
               ListFooterComponent={
@@ -333,14 +436,63 @@ export default function SearchScreen() {
                   </XStack>
                 ) : null
               }
-              renderItem={({ item, index }) => (
-                <SongListItem
-                  track={item}
-                  active={item.hash === activeHash}
-                  onPress={() => void playerActions.playTracks(results.tracks, index)}
-                  onMore={() => setActionTrack(item)}
-                />
-              )}
+              renderItem={({ item, index }) => {
+                if (results.tab === 'song') {
+                  const track = item as PlayerTrack;
+                  return (
+                    <SongListItem
+                      track={track}
+                      active={track.hash === activeHash}
+                      onPress={() => void playerActions.playTracks(songTracks, index)}
+                      onMore={() => setActionTrack(track)}
+                    />
+                  );
+                }
+                if (results.tab === 'special') {
+                  const playlist = item as SearchPlaylist;
+                  return (
+                    <PlaylistResultRow
+                      item={playlist}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/playlist/[id]',
+                          params: { id: playlist.id, name: playlist.name, cover: playlist.coverUrl ?? '' },
+                        })
+                      }
+                    />
+                  );
+                }
+                if (results.tab === 'album') {
+                  const album = item as SearchAlbum;
+                  return (
+                    <AlbumResultRow
+                      item={album}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/album/[id]',
+                          params: {
+                            id: album.id,
+                            name: album.name,
+                            cover: album.coverUrl ?? '',
+                            artist: album.artist,
+                            date: album.publishDate,
+                          },
+                        })
+                      }
+                    />
+                  );
+                }
+                const artist = item as SearchArtist;
+                return (
+                  <ArtistResultRow
+                    item={artist}
+                    onPress={() => {
+                      setActiveTab('song');
+                      void runSearch(artist.name, 'song');
+                    }}
+                  />
+                );
+              }}
             />
           )
         ) : (
