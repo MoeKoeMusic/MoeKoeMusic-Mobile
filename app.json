@@ -46,7 +46,12 @@
           "imageWidth": 180
         }
       ],
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": true
+        }
+      ],
       [
         "expo-build-properties",
         {
