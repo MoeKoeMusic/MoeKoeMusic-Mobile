@@ -5,6 +5,8 @@ export type VipSignInResult = {
   message: string;
   /** 是否是“今天已签到”这类非错误的提示（用于区分成功/中性/失败的展示）。 */
   alreadyDone: boolean;
+  /** 签到态正常（成功或今天已签），可以继续询问升级概念版 VIP；风控等异常不给升级入口。 */
+  canUpgrade?: boolean;
 };
 
 function todayKey(): string {
@@ -35,14 +37,14 @@ export async function signInDailyVip(): Promise<VipSignInResult> {
     const response = await mobileApi.youth_day_vip({ receive_day: todayKey() });
     const body = toRecord(response.body);
     if (pickNumber(body.status) === 1) {
-      return { message: '签到成功，获得 1 天畅听 VIP', alreadyDone: false };
+      return { message: '签到成功，获得 1 天畅听 VIP', alreadyDone: false, canUpgrade: true };
     }
     const msg = pickText(body.error_msg);
     return { message: msg || '签到失败，请稍后重试', alreadyDone: false };
   } catch (error) {
     const code = pickErrorCode(error);
     if (code === 131001) {
-      return { message: '你今天已经签到过了', alreadyDone: true };
+      return { message: '你今天已经签到过了', alreadyDone: true, canUpgrade: true };
     }
     if (code === 20028) {
       return { message: '当前账号存在风控，请前往手机酷狗领取', alreadyDone: true };

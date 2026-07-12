@@ -26,6 +26,8 @@ type TrackCollectionScreenProps = {
   title: string;
   subtitle?: string;
   coverUrl: string | null;
+  /** 没有封面图的集合（如云盘）用渐变图标块代替封面。 */
+  coverIcon?: keyof typeof Ionicons.glyphMap;
   circleCover?: boolean;
   showRank?: boolean;
   emptyText: string;
@@ -48,6 +50,7 @@ export function TrackCollectionScreen({
   title,
   subtitle,
   coverUrl,
+  coverIcon,
   circleCover = false,
   showRank = false,
   emptyText,
@@ -175,7 +178,25 @@ export function TrackCollectionScreen({
             </XStack>
 
             <XStack gap={16} alignItems="center">
-              <Artwork uri={coverUrl} size={112} radius={20} circle={circleCover} />
+              {!coverUrl && coverIcon ? (
+                <XStack
+                  width={112}
+                  height={112}
+                  borderRadius={20}
+                  overflow="hidden"
+                  alignItems="center"
+                  justifyContent="center">
+                  <LinearGradient
+                    colors={[palette.gradientStart, palette.gradientEnd]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <Ionicons name={coverIcon} size={46} color="#FFFFFF" />
+                </XStack>
+              ) : (
+                <Artwork uri={coverUrl} size={112} radius={20} circle={circleCover} />
+              )}
               <YStack flex={1} gap={7}>
                 <Text color={palette.text} fontSize={20} fontWeight="800" numberOfLines={2}>
                   {title}

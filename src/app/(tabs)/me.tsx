@@ -3,12 +3,11 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
 import { Artwork } from '@/components/ui/artwork';
-import { SectionHeader } from '@/components/ui/section-header';
 import { showToast } from '@/components/ui/toast';
 import { CreatePlaylistSheet } from '@/components/ui/track-actions-sheet';
 import {
@@ -16,7 +15,7 @@ import {
   isLoggedIn,
   type UserProfile,
 } from '@/features/account/user-api';
-import { signInDailyVip } from '@/features/account/vip-api';
+import { signInDailyVip, upgradeDailyVip } from '@/features/account/vip-api';
 import { libraryActions, useLibrary, type LibraryPlaylist } from '@/features/library/store';
 import { MaxContentWidth } from '@/constants/theme';
 import { useDockContentInset } from '@/hooks/use-dock-inset';
@@ -72,6 +71,123 @@ function PlaylistRow({
   );
 }
 
+/** 个人中心顶部"我喜欢/我的云盘"入口卡片。 */
+function QuickEntryCard({
+  icon,
+  gradient,
+  title,
+  subtitle,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  gradient: readonly [string, string];
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  const palette = usePalette();
+
+  return (
+    <XStack
+      flex={1}
+      alignItems="center"
+      gap={11}
+      padding={12}
+      borderRadius={18}
+      backgroundColor={palette.card}
+      borderWidth={StyleSheet.hairlineWidth}
+      borderColor={palette.border}
+      transition="quickest"
+      pressStyle={{ opacity: 0.75, scale: 0.98 }}
+      onPress={onPress}>
+      <XStack
+        width={42}
+        height={42}
+        borderRadius={13}
+        overflow="hidden"
+        alignItems="center"
+        justifyContent="center">
+        <LinearGradient
+          colors={gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <Ionicons name={icon} size={20} color="#FFFFFF" />
+      </XStack>
+      <YStack flex={1} gap={2}>
+        <Text color={palette.text} fontSize={14.5} fontWeight="700" numberOfLines={1}>
+          {title}
+        </Text>
+        <Text color={palette.textTertiary} fontSize={11.5} numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </YStack>
+    </XStack>
+  );
+}
+
+/** 可点击展开/收起的歌单分组标题。 */
+function CollapsibleSectionHeader({
+  title,
+  count,
+  open,
+  onToggle,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  const palette = usePalette();
+
+  return (
+    <XStack
+      alignItems="center"
+      gap={8}
+      transition="quickest"
+      pressStyle={{ opacity: 0.65 }}
+      onPress={onToggle}>
+      <Text color={palette.text} fontSize={18} fontWeight="700" letterSpacing={0.2}>
+        {title}
+      </Text>
+      <Text flex={1} color={palette.textTertiary} fontSize={12.5}>
+        {count > 0 ? `${count} 个` : ''}
+      </Text>
+      {actionLabel && onAction ? (
+        <Text
+          color={palette.accent}
+          fontSize={13.5}
+          fontWeight="600"
+          paddingVertical={4}
+          paddingHorizontal={4}
+          pressStyle={{ opacity: 0.6 }}
+          onPress={onAction}
+          suppressHighlighting>
+          {actionLabel}
+        </Text>
+      ) : null}
+      <XStack
+        width={24}
+        height={24}
+        borderRadius={12}
+        alignItems="center"
+        justifyContent="center"
+        backgroundColor={palette.cardAlt}>
+        <Ionicons
+          name={open ? 'chevron-up' : 'chevron-down'}
+          size={14}
+          color={palette.textSecondary}
+        />
+      </XStack>
+    </XStack>
+  );
+}
+
 export default function MeScreen() {
   const palette = usePalette();
   const router = useRouter();
@@ -87,7 +203,27 @@ export default function MeScreen() {
   });
   const [createOpen, setCreateOpen] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
+  // 创建的歌单默认展开，收藏的歌单默认收起
+  const [createdOpen, setCreatedOpen] = useState(true);
+  const [collectedOpen, setCollectedOpen] = useState(false);
   const library = useLibrary();
+
+  const handleUpgrade = useCallback(async () => {
+    setSigningIn(true);
+    try {
+      const result = await upgradeDailyVip();
+      showToast(result.message);
+      if (!result.alreadyDone) {
+        void load('refresh');
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '升级失败，请稍后重试');
+    } finally {
+      setSigningIn(false);
+    }
+    // load 在下方定义，用 ref 稳定引用即可。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSignIn = useCallback(async () => {
     if (signingIn) {
@@ -96,9 +232,17 @@ export default function MeScreen() {
     setSigningIn(true);
     try {
       const result = await signInDailyVip();
-      showToast(result.message);
       if (!result.alreadyDone) {
         void load('refresh');
+      }
+      if (result.canUpgrade) {
+        // 与桌面端一致：签到完成后询问是否升级概念版 VIP（更高音质），一天仅限一次
+        Alert.alert(result.message, '是否继续升级至概念版 VIP，享受更高音质？', [
+          { text: '暂不', style: 'cancel' },
+          { text: '升级', onPress: () => void handleUpgrade() },
+        ]);
+      } else {
+        showToast(result.message);
       }
     } catch (error) {
       showToast(error instanceof Error ? error.message : '签到失败，请稍后重试');
@@ -107,7 +251,7 @@ export default function MeScreen() {
     }
     // load 在下方定义，用 ref 稳定引用即可；此处依赖 signingIn 足够。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signingIn]);
+  }, [signingIn, handleUpgrade]);
 
   const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     const requestId = ++requestIdRef.current;
@@ -178,7 +322,9 @@ export default function MeScreen() {
     }, [load])
   );
 
-  const createdPlaylists = library.playlists.filter((item) => item.isMine);
+  // "我喜欢"独立成顶部卡片入口，不再混在创建的歌单列表里
+  const likePlaylist = library.playlists.find((item) => item.isLike) ?? null;
+  const createdPlaylists = library.playlists.filter((item) => item.isMine && !item.isLike);
   const collectedPlaylists = library.playlists.filter((item) => !item.isMine);
 
   function openPlaylist(item: LibraryPlaylist) {
@@ -349,6 +495,29 @@ export default function MeScreen() {
                 </XStack>
               </YStack>
 
+              <XStack gap={10}>
+                <QuickEntryCard
+                  icon="heart"
+                  gradient={[palette.gradientStart, palette.gradientEnd]}
+                  title="我喜欢"
+                  subtitle={likePlaylist ? `${likePlaylist.count} 首` : '收藏喜欢的歌曲'}
+                  onPress={() => {
+                    if (likePlaylist) {
+                      openPlaylist(likePlaylist);
+                    } else {
+                      showToast('还没有"我喜欢"歌单');
+                    }
+                  }}
+                />
+                <QuickEntryCard
+                  icon="cloud"
+                  gradient={['#5EA8FF', '#3E7BFA']}
+                  title="我的云盘"
+                  subtitle="上传的音乐"
+                  onPress={() => router.push('/cloud')}
+                />
+              </XStack>
+
               {state.error ? (
                 <XStack
                   alignItems="center"
@@ -365,52 +534,64 @@ export default function MeScreen() {
               ) : null}
 
               <YStack gap={10}>
-                <SectionHeader
+                <CollapsibleSectionHeader
                   title="我创建的歌单"
+                  count={createdPlaylists.length}
+                  open={createdOpen}
+                  onToggle={() => setCreatedOpen((open) => !open)}
                   actionLabel="新建"
                   onAction={() => setCreateOpen(true)}
                 />
-                {createdPlaylists.length ? (
-                  <YStack
-                    backgroundColor={palette.card}
-                    borderRadius={20}
-                    borderWidth={StyleSheet.hairlineWidth}
-                    borderColor={palette.border}
-                    paddingVertical={6}
-                    paddingHorizontal={4}>
-                    {createdPlaylists.map((item) => (
-                      <PlaylistRow key={item.gid} item={item} onPress={() => openPlaylist(item)} />
-                    ))}
-                  </YStack>
-                ) : (
-                  <YStack
-                    alignItems="center"
-                    paddingVertical={22}
-                    borderRadius={20}
-                    borderWidth={StyleSheet.hairlineWidth}
-                    borderColor={palette.border}
-                    backgroundColor={palette.card}>
-                    <Text color={palette.textTertiary} fontSize={12.5}>
-                      还没有自己的歌单，点右上角&quot;新建&quot;
-                    </Text>
-                  </YStack>
-                )}
+                {createdOpen ? (
+                  createdPlaylists.length ? (
+                    <YStack
+                      backgroundColor={palette.card}
+                      borderRadius={20}
+                      borderWidth={StyleSheet.hairlineWidth}
+                      borderColor={palette.border}
+                      paddingVertical={6}
+                      paddingHorizontal={4}>
+                      {createdPlaylists.map((item) => (
+                        <PlaylistRow key={item.gid} item={item} onPress={() => openPlaylist(item)} />
+                      ))}
+                    </YStack>
+                  ) : (
+                    <YStack
+                      alignItems="center"
+                      paddingVertical={22}
+                      borderRadius={20}
+                      borderWidth={StyleSheet.hairlineWidth}
+                      borderColor={palette.border}
+                      backgroundColor={palette.card}>
+                      <Text color={palette.textTertiary} fontSize={12.5}>
+                        还没有自己的歌单，点右上角&quot;新建&quot;
+                      </Text>
+                    </YStack>
+                  )
+                ) : null}
               </YStack>
 
               {collectedPlaylists.length ? (
                 <YStack gap={10}>
-                  <SectionHeader title="收藏的歌单" />
-                  <YStack
-                    backgroundColor={palette.card}
-                    borderRadius={20}
-                    borderWidth={StyleSheet.hairlineWidth}
-                    borderColor={palette.border}
-                    paddingVertical={6}
-                    paddingHorizontal={4}>
-                    {collectedPlaylists.map((item) => (
-                      <PlaylistRow key={item.gid} item={item} onPress={() => openPlaylist(item)} />
-                    ))}
-                  </YStack>
+                  <CollapsibleSectionHeader
+                    title="收藏的歌单"
+                    count={collectedPlaylists.length}
+                    open={collectedOpen}
+                    onToggle={() => setCollectedOpen((open) => !open)}
+                  />
+                  {collectedOpen ? (
+                    <YStack
+                      backgroundColor={palette.card}
+                      borderRadius={20}
+                      borderWidth={StyleSheet.hairlineWidth}
+                      borderColor={palette.border}
+                      paddingVertical={6}
+                      paddingHorizontal={4}>
+                      {collectedPlaylists.map((item) => (
+                        <PlaylistRow key={item.gid} item={item} onPress={() => openPlaylist(item)} />
+                      ))}
+                    </YStack>
+                  ) : null}
                 </YStack>
               ) : null}
             </YStack>

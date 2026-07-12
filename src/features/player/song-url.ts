@@ -30,6 +30,10 @@ export type ResolvedSongSource = {
 
 /** 解析歌曲真实播放地址；无版权/需付费时抛 PlaybackUnavailableError。 */
 export async function resolveSongSource(track: PlayerTrack): Promise<ResolvedSongSource> {
+  if (track.source === 'cloud') {
+    return resolveCloudSource(track);
+  }
+
   const response = await mobileApi.song_url({
     hash: track.hash,
     album_id: track.albumId ?? 0,
@@ -56,5 +60,27 @@ export async function resolveSongSource(track: PlayerTrack): Promise<ResolvedSon
   return {
     uri: urls[0],
     durationMs: normalizeDurationMs(body.timeLength) || track.durationMs || 0,
+  };
+}
+
+/** 云盘歌曲的播放地址走 mcloud 专用接口。 */
+async function resolveCloudSource(track: PlayerTrack): Promise<ResolvedSongSource> {
+  const response = await mobileApi.user_cloud_url({
+    hash: track.hash,
+    album_audio_id: track.albumAudioId ?? 0,
+    name: track.title,
+  });
+
+  const body = toRecord(response.body);
+  const data = toRecord(body.data);
+  const urls = collectUrls(data.url);
+
+  if (Number(body.status ?? 0) !== 1 || !urls.length) {
+    throw new PlaybackUnavailableError('云盘歌曲暂时无法播放');
+  }
+
+  return {
+    uri: urls[0],
+    durationMs: track.durationMs ?? 0,
   };
 }

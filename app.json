@@ -57,7 +57,8 @@
       [
         "expo-audio",
         {
-          "enableBackgroundPlayback": true
+          "enableBackgroundPlayback": true,
+          "microphonePermission": "允许 $(PRODUCT_NAME) 访问麦克风，用于听歌识曲"
         }
       ],
       [

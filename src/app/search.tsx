@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { startTransition, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
@@ -133,13 +133,23 @@ export default function SearchScreen() {
   const { track } = usePlayer();
   const inputRef = useRef<TextInput>(null);
   const searchIdRef = useRef(0);
+  const params = useLocalSearchParams<{ q?: string }>();
+  const initialQuery = typeof params.q === 'string' ? params.q.trim() : '';
 
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [activeTab, setActiveTab] = useState<SearchTab>('complex');
   const [hotKeywords, setHotKeywords] = useState<SearchKeyword[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [results, setResults] = useState<ResultsState>(EMPTY_RESULTS);
   const [actionTrack, setActionTrack] = useState<PlayerTrack | null>(null);
+
+  // 识曲等入口带初始关键词跳转进来时，直接执行一次搜索
+  useEffect(() => {
+    if (initialQuery) {
+      void commitSearch(initialQuery);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -552,7 +562,7 @@ export default function SearchScreen() {
               placeholderTextColor={palette.textTertiary}
               returnKeyType="search"
               autoCorrect={false}
-              autoFocus
+              autoFocus={!initialQuery}
               style={[styles.input, { color: palette.text }]}
             />
             {query ? (
@@ -567,7 +577,17 @@ export default function SearchScreen() {
                 onPress={resetSearch}>
                 <Ionicons name="close" size={13} color={palette.textSecondary} />
               </XStack>
-            ) : null}
+            ) : (
+              <XStack
+                width={28}
+                height={28}
+                alignItems="center"
+                justifyContent="center"
+                pressStyle={{ opacity: 0.6, scale: 0.92 }}
+                onPress={() => router.push('/recognize')}>
+                <Ionicons name="mic-outline" size={19} color={palette.accent} />
+              </XStack>
+            )}
           </XStack>
         </XStack>
 

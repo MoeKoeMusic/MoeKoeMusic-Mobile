@@ -179,9 +179,18 @@ export default function HomeScreen() {
           pressStyle={{ opacity: 0.7, scale: 0.99 }}
           onPress={() => router.push('/search')}>
           <Ionicons name="search" size={17} color={palette.textTertiary} />
-          <Text color={palette.textTertiary} fontSize={14}>
+          <Text flex={1} color={palette.textTertiary} fontSize={14}>
             搜索歌曲、歌手、歌单
           </Text>
+          <XStack
+            width={30}
+            height={30}
+            alignItems="center"
+            justifyContent="center"
+            pressStyle={{ opacity: 0.6, scale: 0.92 }}
+            onPress={() => router.push('/recognize')}>
+            <Ionicons name="mic-outline" size={19} color={palette.accent} />
+          </XStack>
         </XStack>
 
         {state.errorMessage ? (

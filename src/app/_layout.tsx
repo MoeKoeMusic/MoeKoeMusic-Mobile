@@ -85,6 +85,19 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="recognize"
+            options={{
+              animation: 'fade_from_bottom',
+              animationDuration: 220,
+            }}
+          />
+          <Stack.Screen
+            name="cloud"
+            options={{
+              animation: 'slide_from_right',
+            }}
+          />
+          <Stack.Screen
             name="login"
             options={{
               presentation: 'modal',
