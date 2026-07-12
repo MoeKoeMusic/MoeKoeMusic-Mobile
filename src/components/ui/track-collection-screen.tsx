@@ -26,6 +26,7 @@ type TrackCollectionScreenProps = {
   title: string;
   subtitle?: string;
   coverUrl: string | null;
+  circleCover?: boolean;
   showRank?: boolean;
   emptyText: string;
   loadPage: (page: number) => Promise<TrackPage>;
@@ -47,6 +48,7 @@ export function TrackCollectionScreen({
   title,
   subtitle,
   coverUrl,
+  circleCover = false,
   showRank = false,
   emptyText,
   loadPage,
@@ -173,7 +175,7 @@ export function TrackCollectionScreen({
             </XStack>
 
             <XStack gap={16} alignItems="center">
-              <Artwork uri={coverUrl} size={112} radius={20} />
+              <Artwork uri={coverUrl} size={112} radius={20} circle={circleCover} />
               <YStack flex={1} gap={7}>
                 <Text color={palette.text} fontSize={20} fontWeight="800" numberOfLines={2}>
                   {title}

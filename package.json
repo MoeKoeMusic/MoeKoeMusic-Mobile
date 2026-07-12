@@ -6,10 +6,12 @@
   "scripts": {
     "start": "expo start",
     "generate:mobile-api": "node ./scripts/generate-mobile-api-entry.mjs",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "build:android:dev": "eas build --profile development --platform android",
+    "build:ios:dev": "eas build --profile development --platform ios"
   },
   "private": true,
   "license": "GPL-2.0-only",
@@ -22,6 +24,7 @@
     "expo-audio": "~57.0.0",
     "expo-build-properties": "~57.0.3",
     "expo-constants": "~57.0.3",
+    "expo-dev-client": "~57.0.5",
     "expo-device": "~57.0.0",
     "expo-font": "~57.0.0",
     "expo-glass-effect": "~57.0.0",
@@ -34,6 +37,7 @@
     "expo-status-bar": "~57.0.0",
     "expo-symbols": "~57.0.0",
     "expo-system-ui": "~57.0.0",
+    "expo-video": "~57.0.0",
     "expo-web-browser": "~57.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",

@@ -1,16 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { startTransition, useEffect, useRef, useState } from 'react';
-import { FlatList, Keyboard, StyleSheet, TextInput, View as RNView } from 'react-native';
+import {
+  FlatList,
+  Keyboard,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View as RNView,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
 import { MiniPlayer, MINI_PLAYER_HEIGHT } from '@/components/ui/mini-player';
 import {
-  AlbumResultRow,
-  ArtistResultRow,
-  PlaylistResultRow,
-} from '@/components/ui/search-result-rows';
+  AlbumCard,
+  ArtistCard,
+  MvCard,
+  PlaylistCard,
+} from '@/components/ui/search-result-cards';
 import { SongListItem } from '@/components/ui/song-list-item';
 import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { MaxContentWidth } from '@/constants/theme';
@@ -21,27 +29,46 @@ import {
   fetchSuggestions,
   searchAlbums,
   searchArtists,
+  searchComplex,
+  searchMvs,
   searchPlaylists,
   searchSongs,
+  type ComplexSearchResult,
   type SearchAlbum,
   type SearchArtist,
   type SearchKeyword,
+  type SearchMv,
   type SearchPlaylist,
   type SearchTab,
 } from '@/features/search/search-api';
 import { usePalette } from '@/hooks/use-palette';
 
 const SEARCH_TABS: { value: SearchTab; label: string }[] = [
+  { value: 'complex', label: '综合' },
   { value: 'song', label: '单曲' },
   { value: 'special', label: '歌单' },
   { value: 'album', label: '专辑' },
+  { value: 'mv', label: 'MV' },
   { value: 'author', label: '歌手' },
 ];
+
+/** 各标签的网格列数，与桌面端的网格布局对应（移动端窄屏收窄）。 */
+const TAB_COLUMNS: Record<SearchTab, number> = {
+  complex: 1,
+  song: 1,
+  special: 2,
+  album: 2,
+  mv: 2,
+  author: 3,
+};
+
+type ListItem = PlayerTrack | SearchPlaylist | SearchAlbum | SearchArtist | SearchMv;
 
 type ResultsState = {
   keyword: string;
   tab: SearchTab;
-  items: (PlayerTrack | SearchPlaylist | SearchAlbum | SearchArtist)[];
+  items: ListItem[];
+  complex: ComplexSearchResult | null;
   page: number;
   total: number;
   hasMore: boolean;
@@ -52,8 +79,9 @@ type ResultsState = {
 
 const EMPTY_RESULTS: ResultsState = {
   keyword: '',
-  tab: 'song',
+  tab: 'complex',
   items: [],
+  complex: null,
   page: 0,
   total: 0,
   hasMore: false,
@@ -63,12 +91,16 @@ const EMPTY_RESULTS: ResultsState = {
 };
 
 type FetchPage = {
-  items: ResultsState['items'];
+  items: ListItem[];
   total: number;
   hasMore: boolean;
 };
 
-async function fetchTabPage(tab: SearchTab, keyword: string, page: number): Promise<FetchPage> {
+async function fetchTabPage(
+  tab: Exclude<SearchTab, 'complex'>,
+  keyword: string,
+  page: number
+): Promise<FetchPage> {
   if (tab === 'song') {
     const result = await searchSongs(keyword, page);
     return { items: result.tracks, total: result.total, hasMore: result.hasMore };
@@ -79,10 +111,13 @@ async function fetchTabPage(tab: SearchTab, keyword: string, page: number): Prom
   if (tab === 'album') {
     return searchAlbums(keyword, page);
   }
+  if (tab === 'mv') {
+    return searchMvs(keyword, page);
+  }
   return searchArtists(keyword, page);
 }
 
-function itemKey(item: ResultsState['items'][number]): string {
+function itemKey(item: ListItem): string {
   if ('hash' in item) {
     return item.hash;
   }
@@ -99,7 +134,7 @@ export default function SearchScreen() {
   const searchIdRef = useRef(0);
 
   const [query, setQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<SearchTab>('song');
+  const [activeTab, setActiveTab] = useState<SearchTab>('complex');
   const [hotKeywords, setHotKeywords] = useState<SearchKeyword[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [results, setResults] = useState<ResultsState>(EMPTY_RESULTS);
@@ -148,6 +183,23 @@ export default function SearchScreen() {
     setResults({ ...EMPTY_RESULTS, keyword: trimmed, tab, searching: true });
 
     try {
+      if (tab === 'complex') {
+        const complex = await searchComplex(trimmed);
+        if (searchId !== searchIdRef.current) {
+          return;
+        }
+        startTransition(() => {
+          setResults({
+            ...EMPTY_RESULTS,
+            keyword: trimmed,
+            tab,
+            complex,
+            searching: false,
+          });
+        });
+        return;
+      }
+
       const page = await fetchTabPage(tab, trimmed, 1);
       if (searchId !== searchIdRef.current) {
         return;
@@ -155,6 +207,7 @@ export default function SearchScreen() {
 
       startTransition(() => {
         setResults({
+          ...EMPTY_RESULTS,
           keyword: trimmed,
           tab,
           items: page.items,
@@ -162,8 +215,6 @@ export default function SearchScreen() {
           total: page.total,
           hasMore: page.hasMore,
           searching: false,
-          loadingMore: false,
-          error: '',
         });
       });
     } catch (error) {
@@ -205,7 +256,12 @@ export default function SearchScreen() {
   }
 
   async function loadMore() {
-    if (!results.hasMore || results.loadingMore || results.searching) {
+    if (
+      results.tab === 'complex' ||
+      !results.hasMore ||
+      results.loadingMore ||
+      results.searching
+    ) {
       return;
     }
 
@@ -248,12 +304,201 @@ export default function SearchScreen() {
     inputRef.current?.focus();
   }
 
+  /* ---------- 导航 ---------- */
+
+  function openPlaylist(playlist: SearchPlaylist) {
+    router.push({
+      pathname: '/playlist/[id]',
+      params: { id: playlist.id, name: playlist.name, cover: playlist.coverUrl ?? '' },
+    });
+  }
+
+  function openAlbum(album: SearchAlbum) {
+    router.push({
+      pathname: '/album/[id]',
+      params: {
+        id: album.id,
+        name: album.name,
+        cover: album.coverUrl ?? '',
+        artist: album.artist,
+        date: album.publishDate,
+      },
+    });
+  }
+
+  function openArtist(artist: SearchArtist) {
+    router.push({
+      pathname: '/artist/[id]',
+      params: { id: artist.id, name: artist.name, avatar: artist.avatarUrl ?? '' },
+    });
+  }
+
+  function openMv(mv: SearchMv) {
+    router.push({
+      pathname: '/mv/[hash]',
+      params: { hash: mv.hash, title: mv.name },
+    });
+  }
+
   const showResults = Boolean(results.keyword) && !suggestions.length;
   const showSuggestions = suggestions.length > 0;
   const activeHash = track?.hash;
   const listBottomInset = insets.bottom + (hasTrack ? MINI_PLAYER_HEIGHT + 26 : 16) + 16;
+  const columns = TAB_COLUMNS[results.tab];
 
-  const songTracks = results.tab === 'song' ? (results.items as PlayerTrack[]) : [];
+  const hasComplexContent = Boolean(
+    results.complex &&
+      (results.complex.artists.length ||
+        results.complex.songs.length ||
+        results.complex.albums.length ||
+        results.complex.playlists.length ||
+        results.complex.mvs.length)
+  );
+  const hasContent = results.tab === 'complex' ? hasComplexContent : results.items.length > 0;
+
+  /* ---------- 综合页的分区标题 ---------- */
+
+  function SectionHeader({
+    title,
+    total,
+    moreTab,
+  }: {
+    title: string;
+    total?: number;
+    moreTab?: SearchTab;
+  }) {
+    return (
+      <XStack alignItems="center" justifyContent="space-between" paddingHorizontal={16}>
+        <Text color={palette.text} fontSize={17} fontWeight="700">
+          {title}
+        </Text>
+        {moreTab ? (
+          <XStack
+            alignItems="center"
+            gap={2}
+            pressStyle={{ opacity: 0.6 }}
+            onPress={() => changeTab(moreTab)}>
+            <Text color={palette.textTertiary} fontSize={12.5}>
+              查看更多{total ? `(${total})` : ''}
+            </Text>
+            <Ionicons name="chevron-forward" size={13} color={palette.textTertiary} />
+          </XStack>
+        ) : null}
+      </XStack>
+    );
+  }
+
+  function renderComplex(complex: ComplexSearchResult) {
+    const songs = complex.songs.slice(0, 5);
+    return (
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: listBottomInset, gap: 22 }}>
+        {complex.artists.length ? (
+          <YStack gap={10}>
+            <SectionHeader title="歌手" moreTab="author" />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
+              {complex.artists.map((artist) => (
+                <ArtistCard key={artist.id} item={artist} width={104} onPress={() => openArtist(artist)} />
+              ))}
+            </ScrollView>
+          </YStack>
+        ) : null}
+
+        {songs.length ? (
+          <YStack gap={6}>
+            <SectionHeader title="单曲" total={complex.songsTotal} moreTab="song" />
+            <YStack paddingHorizontal={12}>
+              {songs.map((song, index) => (
+                <SongListItem
+                  key={`${song.hash}-${index}`}
+                  track={song}
+                  active={song.hash === activeHash}
+                  onPress={() => void playerActions.playTracks(songs, index)}
+                  onMore={() => setActionTrack(song)}
+                />
+              ))}
+            </YStack>
+          </YStack>
+        ) : null}
+
+        {complex.playlists.length ? (
+          <YStack gap={10}>
+            <SectionHeader title="歌单" total={complex.playlistsTotal} moreTab="special" />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
+              {complex.playlists.map((playlist) => (
+                <PlaylistCard key={playlist.id} item={playlist} width={136} onPress={() => openPlaylist(playlist)} />
+              ))}
+            </ScrollView>
+          </YStack>
+        ) : null}
+
+        {complex.albums.length ? (
+          <YStack gap={10}>
+            <SectionHeader title="专辑" total={complex.albumsTotal} moreTab="album" />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
+              {complex.albums.map((album) => (
+                <AlbumCard key={album.id} item={album} width={136} onPress={() => openAlbum(album)} />
+              ))}
+            </ScrollView>
+          </YStack>
+        ) : null}
+
+        {complex.mvs.length ? (
+          <YStack gap={10}>
+            <SectionHeader title="MV" total={complex.mvsTotal} moreTab="mv" />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
+              {complex.mvs.map((mv) => (
+                <MvCard key={mv.hash} item={mv} width={210} onPress={() => openMv(mv)} />
+              ))}
+            </ScrollView>
+          </YStack>
+        ) : null}
+      </ScrollView>
+    );
+  }
+
+  function renderGridItem(item: ListItem, index: number) {
+    if (results.tab === 'song') {
+      const song = item as PlayerTrack;
+      return (
+        <SongListItem
+          track={song}
+          active={song.hash === activeHash}
+          onPress={() => void playerActions.playTracks(results.items as PlayerTrack[], index)}
+          onMore={() => setActionTrack(song)}
+        />
+      );
+    }
+    if (results.tab === 'special') {
+      const playlist = item as SearchPlaylist;
+      return <PlaylistCard item={playlist} onPress={() => openPlaylist(playlist)} />;
+    }
+    if (results.tab === 'album') {
+      const album = item as SearchAlbum;
+      return <AlbumCard item={album} onPress={() => openAlbum(album)} />;
+    }
+    if (results.tab === 'mv') {
+      const mv = item as SearchMv;
+      return <MvCard item={mv} onPress={() => openMv(mv)} />;
+    }
+    const artist = item as SearchArtist;
+    return <ArtistCard item={artist} onPress={() => openArtist(artist)} />;
+  }
 
   return (
     <View flex={1} backgroundColor={palette.background}>
@@ -320,7 +565,11 @@ export default function SearchScreen() {
         </XStack>
 
         {showResults ? (
-          <XStack paddingHorizontal={16} gap={8}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ flexGrow: 0 }}
+            contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
             {SEARCH_TABS.map((tab) => {
               const active = tab.value === activeTab;
               return (
@@ -344,7 +593,7 @@ export default function SearchScreen() {
                 </XStack>
               );
             })}
-          </XStack>
+          </ScrollView>
         ) : null}
 
         {showSuggestions ? (
@@ -389,28 +638,37 @@ export default function SearchScreen() {
                 重试
               </Text>
             </YStack>
-          ) : !results.items.length ? (
+          ) : !hasContent ? (
             <YStack flex={1} alignItems="center" justifyContent="center" gap={10}>
               <Ionicons name="search" size={38} color={palette.textTertiary} />
               <Text color={palette.textTertiary} fontSize={13.5}>
                 没有找到相关内容
               </Text>
             </YStack>
+          ) : results.tab === 'complex' && results.complex ? (
+            renderComplex(results.complex)
           ) : (
             <FlatList
+              key={results.tab}
               data={results.items}
+              numColumns={columns}
+              columnWrapperStyle={columns > 1 ? { gap: 14 } : undefined}
               keyExtractor={(item, index) => `${itemKey(item)}-${index}`}
               keyboardShouldPersistTaps="handled"
               onScrollBeginDrag={Keyboard.dismiss}
               showsVerticalScrollIndicator={false}
               onEndReachedThreshold={0.4}
               onEndReached={() => void loadMore()}
-              contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: listBottomInset }}
+              contentContainerStyle={{
+                paddingHorizontal: columns > 1 ? 16 : 12,
+                paddingBottom: listBottomInset,
+                gap: columns > 1 ? 18 : 0,
+              }}
               ListHeaderComponent={
                 <XStack
                   alignItems="center"
                   justifyContent="space-between"
-                  paddingHorizontal={6}
+                  paddingHorizontal={columns > 1 ? 0 : 6}
                   paddingBottom={8}>
                   <Text color={palette.textTertiary} fontSize={12.5}>
                     {results.total > 0 ? `共 ${results.total} 条` : `${results.items.length} 条`}
@@ -420,7 +678,9 @@ export default function SearchScreen() {
                       alignItems="center"
                       gap={5}
                       pressStyle={{ opacity: 0.6 }}
-                      onPress={() => void playerActions.playTracks(songTracks, 0)}>
+                      onPress={() =>
+                        void playerActions.playTracks(results.items as PlayerTrack[], 0)
+                      }>
                       <Ionicons name="play-circle" size={17} color={palette.accent} />
                       <Text color={palette.accent} fontSize={13.5} fontWeight="600">
                         播放全部
@@ -436,63 +696,7 @@ export default function SearchScreen() {
                   </XStack>
                 ) : null
               }
-              renderItem={({ item, index }) => {
-                if (results.tab === 'song') {
-                  const track = item as PlayerTrack;
-                  return (
-                    <SongListItem
-                      track={track}
-                      active={track.hash === activeHash}
-                      onPress={() => void playerActions.playTracks(songTracks, index)}
-                      onMore={() => setActionTrack(track)}
-                    />
-                  );
-                }
-                if (results.tab === 'special') {
-                  const playlist = item as SearchPlaylist;
-                  return (
-                    <PlaylistResultRow
-                      item={playlist}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/playlist/[id]',
-                          params: { id: playlist.id, name: playlist.name, cover: playlist.coverUrl ?? '' },
-                        })
-                      }
-                    />
-                  );
-                }
-                if (results.tab === 'album') {
-                  const album = item as SearchAlbum;
-                  return (
-                    <AlbumResultRow
-                      item={album}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/album/[id]',
-                          params: {
-                            id: album.id,
-                            name: album.name,
-                            cover: album.coverUrl ?? '',
-                            artist: album.artist,
-                            date: album.publishDate,
-                          },
-                        })
-                      }
-                    />
-                  );
-                }
-                const artist = item as SearchArtist;
-                return (
-                  <ArtistResultRow
-                    item={artist}
-                    onPress={() => {
-                      setActiveTab('song');
-                      void runSearch(artist.name, 'song');
-                    }}
-                  />
-                );
-              }}
+              renderItem={({ item, index }) => renderGridItem(item, index)}
             />
           )
         ) : (

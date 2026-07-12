@@ -308,6 +308,10 @@ export const playerActions = {
     await loadTrackAt(index + 1);
   },
 
+  pause() {
+    playerStore.getState().track && audioPlayer?.pause();
+  },
+
   toggle() {
     const { track, playing, loading, error } = playerStore.getState();
     if (!track || loading) {
