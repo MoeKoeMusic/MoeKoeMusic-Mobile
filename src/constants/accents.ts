@@ -32,7 +32,7 @@ export function withAlpha(hex: string, alpha: number): `rgba(${string})` {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export type AccentPresetId = 'pink' | 'blue' | 'purple' | 'green' | 'cyan' | 'orange' | 'red';
+export type AccentPresetId = 'pink' | 'blue' | 'purple' | 'green' | 'cyan' | 'orange';
 
 type AccentOverlay = Pick<
   AppPalette,
@@ -63,7 +63,6 @@ export const ACCENT_PRESETS: readonly AccentPreset[] = [
   { id: 'green', label: '薄荷绿', light: '#12B886', dark: '#44C79F' },
   { id: 'cyan', label: '湖水青', light: '#00B8D9', dark: '#36C7E1' },
   { id: 'orange', label: '落日橙', light: '#FF7A45', dark: '#FF966C' },
-  { id: 'red', label: '绯红', light: '#F43F5E', dark: '#F66780' },
 ];
 
 export const DEFAULT_ACCENT_ID: AccentPresetId = 'pink';

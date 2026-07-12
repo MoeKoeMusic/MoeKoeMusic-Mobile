@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { Linking, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
@@ -19,6 +19,7 @@ export default function WebScreen() {
     typeof params.title === 'string' ? params.title : ''
   );
   const [loading, setLoading] = useState(true);
+  const [currentUrl, setCurrentUrl] = useState(url);
 
   return (
     <YStack flex={1} backgroundColor={palette.background} paddingTop={insets.top + 10}>
@@ -47,6 +48,20 @@ export default function WebScreen() {
           {pageTitle || '网页'}
         </Text>
         {loading ? <Spinner size="small" color={palette.accent} /> : null}
+        {url ? (
+          <XStack
+            accessibilityLabel="用系统浏览器打开"
+            width={38}
+            height={38}
+            borderRadius={19}
+            alignItems="center"
+            justifyContent="center"
+            transition="quickest"
+            pressStyle={{ opacity: 0.65, scale: 0.96 }}
+            onPress={() => void Linking.openURL(currentUrl)}>
+            <Ionicons name="open-outline" size={20} color={palette.text} />
+          </XStack>
+        ) : null}
       </XStack>
 
       {url ? (
@@ -54,8 +69,10 @@ export default function WebScreen() {
           source={{ uri: url }}
           style={{ flex: 1, backgroundColor: palette.background }}
           domStorageEnabled
+          setSupportMultipleWindows={false}
           onLoadEnd={() => setLoading(false)}
           onNavigationStateChange={(navState) => {
+            setCurrentUrl(navState.url);
             // 没传标题时跟随网页自身标题
             if (!params.title && navState.title) {
               setPageTitle(navState.title);

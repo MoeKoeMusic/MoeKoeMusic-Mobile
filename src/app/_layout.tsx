@@ -110,6 +110,12 @@ export default function RootLayout() {
               animation: 'slide_from_right',
             }}
           />
+          <Stack.Screen
+            name="web"
+            options={{
+              animation: 'slide_from_right',
+            }}
+          />
         </Stack>
         <ToastHost />
         <StatusBar style={isDark ? 'light' : 'dark'} />
