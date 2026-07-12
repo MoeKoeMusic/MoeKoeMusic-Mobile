@@ -9,12 +9,14 @@ import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
 import { Artwork } from '@/components/ui/artwork';
 import { SectionHeader } from '@/components/ui/section-header';
+import { showToast } from '@/components/ui/toast';
 import { CreatePlaylistSheet } from '@/components/ui/track-actions-sheet';
 import {
   fetchUserProfile,
   isLoggedIn,
   type UserProfile,
 } from '@/features/account/user-api';
+import { signInDailyVip } from '@/features/account/vip-api';
 import { libraryActions, useLibrary, type LibraryPlaylist } from '@/features/library/store';
 import { MaxContentWidth } from '@/constants/theme';
 import { useDockContentInset } from '@/hooks/use-dock-inset';
@@ -84,7 +86,28 @@ export default function MeScreen() {
     error: '',
   });
   const [createOpen, setCreateOpen] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
   const library = useLibrary();
+
+  const handleSignIn = useCallback(async () => {
+    if (signingIn) {
+      return;
+    }
+    setSigningIn(true);
+    try {
+      const result = await signInDailyVip();
+      showToast(result.message);
+      if (!result.alreadyDone) {
+        void load('refresh');
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '签到失败，请稍后重试');
+    } finally {
+      setSigningIn(false);
+    }
+    // load 在下方定义，用 ref 稳定引用即可；此处依赖 signingIn 足够。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signingIn]);
 
   const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     const requestId = ++requestIdRef.current;
@@ -299,6 +322,30 @@ export default function MeScreen() {
                       </Text>
                     </YStack>
                   ))}
+                </XStack>
+
+                <XStack
+                  marginTop={12}
+                  alignItems="center"
+                  justifyContent="center"
+                  gap={7}
+                  height={44}
+                  borderRadius={16}
+                  backgroundColor={palette.vipSoft}
+                  borderWidth={StyleSheet.hairlineWidth}
+                  borderColor={palette.vip}
+                  opacity={signingIn ? 0.6 : 1}
+                  transition="quickest"
+                  pressStyle={{ opacity: 0.75, scale: 0.99 }}
+                  onPress={() => void handleSignIn()}>
+                  {signingIn ? (
+                    <Spinner size="small" color={palette.vip} />
+                  ) : (
+                    <Ionicons name="gift" size={16} color={palette.vip} />
+                  )}
+                  <Text color={palette.vip} fontSize={14} fontWeight="700">
+                    {signingIn ? '签到中…' : '签到领取 VIP'}
+                  </Text>
                 </XStack>
               </YStack>
 
