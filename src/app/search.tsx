@@ -180,6 +180,12 @@ export default function SearchScreen() {
       return;
     }
 
+    if (!isLoggedIn()) {
+      searchIdRef.current += 1;
+      setResults({ ...EMPTY_RESULTS, keyword: trimmed, tab });
+      return;
+    }
+
     const searchId = ++searchIdRef.current;
     setResults({ ...EMPTY_RESULTS, keyword: trimmed, tab, searching: true });
 
@@ -793,9 +799,9 @@ const styles = StyleSheet.create({
     height: '100%',
     fontSize: 15,
     fontWeight: '500',
-    paddingVertical: 0,
+    paddingTop: 2,
+    paddingBottom: 0,
     textAlignVertical: 'center',
-    includeFontPadding: false,
   },
   miniDock: {
     position: 'absolute',

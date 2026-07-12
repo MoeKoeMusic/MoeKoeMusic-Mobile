@@ -3,6 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  BackHandler,
   ScrollView,
   StyleSheet,
   InteractionManager,
@@ -177,6 +178,14 @@ export default function PlayerScreen() {
     return () => task.cancel();
   }, []);
 
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      router.dismiss();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [router]);
+
   function handleToggleLike() {
     if (!track || likeBusy) {
       return;
@@ -246,7 +255,7 @@ export default function PlayerScreen() {
 
       <YStack flex={1} paddingTop={insets.top + 6} paddingBottom={Math.max(insets.bottom, 14) + 20}>
         {/* 顶栏 */}
-        <XStack alignItems="center" justifyContent="space-between" paddingHorizontal={18}>
+        <XStack zIndex={1} alignItems="center" justifyContent="space-between" paddingHorizontal={18}>
           <XStack
             width={40}
             height={40}
@@ -255,7 +264,7 @@ export default function PlayerScreen() {
             justifyContent="center"
             transition="quickest"
             pressStyle={{ opacity: 0.6, scale: 0.92 }}
-            onPress={() => router.back()}>
+            onPress={() => router.dismiss()}>
             <Ionicons name="chevron-down" size={24} color={palette.textSecondary} />
           </XStack>
           <YStack alignItems="center" gap={2}>

@@ -10,8 +10,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "build:android:dev": "eas build --profile development --platform android",
-    "build:ios:dev": "eas build --profile development --platform ios"
+    "build:android:dev": "npx eas-cli build --profile development --platform android",
+    "build:ios:dev": "npx eas-cli build --profile development --platform ios"
   },
   "private": true,
   "license": "GPL-2.0-only",
