@@ -9,6 +9,5 @@ export function useDockContentInset(): number {
   const insets = useSafeAreaInsets();
   const hasTrack = useHasTrack();
 
-  const barBottom = Math.max(insets.bottom, 10);
-  return barBottom + TabBarHeight + (hasTrack ? MINI_PLAYER_HEIGHT + 10 : 0) + 20;
+  return insets.bottom + TabBarHeight + (hasTrack ? MINI_PLAYER_HEIGHT + 10 : 0) + 20;
 }

@@ -22,6 +22,7 @@ import {
 import { SongListItem } from '@/components/ui/song-list-item';
 import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { MaxContentWidth } from '@/constants/theme';
+import { isLoggedIn } from '@/features/account/user-api';
 import { playerActions, useHasTrack, usePlayer } from '@/features/player/store';
 import type { PlayerTrack } from '@/features/player/types';
 import {
@@ -639,12 +640,35 @@ export default function SearchScreen() {
               </Text>
             </YStack>
           ) : !hasContent ? (
-            <YStack flex={1} alignItems="center" justifyContent="center" gap={10}>
-              <Ionicons name="search" size={38} color={palette.textTertiary} />
-              <Text color={palette.textTertiary} fontSize={13.5}>
-                没有找到相关内容
-              </Text>
-            </YStack>
+            isLoggedIn() ? (
+              <YStack flex={1} alignItems="center" justifyContent="center" gap={10}>
+                <Ionicons name="search" size={38} color={palette.textTertiary} />
+                <Text color={palette.textTertiary} fontSize={13.5}>
+                  没有找到相关内容
+                </Text>
+              </YStack>
+            ) : (
+              <YStack flex={1} alignItems="center" justifyContent="center" gap={14} paddingHorizontal={32}>
+                <Ionicons name="lock-closed-outline" size={38} color={palette.textTertiary} />
+                <Text color={palette.textTertiary} fontSize={13.5} textAlign="center" lineHeight={20}>
+                  酷狗概念版的搜索需要登录后才能获取结果，请先登录
+                </Text>
+                <XStack
+                  alignItems="center"
+                  gap={6}
+                  paddingHorizontal={20}
+                  paddingVertical={10}
+                  borderRadius={999}
+                  backgroundColor={palette.accent}
+                  pressStyle={{ opacity: 0.75, scale: 0.98 }}
+                  onPress={() => router.push('/login')}>
+                  <Ionicons name="log-in-outline" size={16} color="#FFFFFF" />
+                  <Text color="#FFFFFF" fontSize={14} fontWeight="700">
+                    去登录
+                  </Text>
+                </XStack>
+              </YStack>
+            )
           ) : results.tab === 'complex' && results.complex ? (
             renderComplex(results.complex)
           ) : (
@@ -766,9 +790,12 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   input: {
     flex: 1,
+    height: '100%',
     fontSize: 15,
     fontWeight: '500',
     paddingVertical: 0,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   miniDock: {
     position: 'absolute',

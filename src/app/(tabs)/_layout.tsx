@@ -52,9 +52,7 @@ export default function TabsLayout() {
     };
   }, []);
 
-  const barBottom = Math.max(insets.bottom, 10);
-  const barWidth = Math.min(width - TabBarSideMargin * 2, 520);
-  const barSideMargin = Math.max(TabBarSideMargin, (width - barWidth) / 2);
+  const barHeight = TabBarHeight + insets.bottom;
   const dockWidth = Math.min(width - TabBarSideMargin * 2, 680);
 
   return (
@@ -67,11 +65,10 @@ export default function TabsLayout() {
           tabBarHideOnKeyboard: true,
           tabBarStyle: {
             position: 'absolute',
-            left: barSideMargin,
-            right: barSideMargin,
-            bottom: barBottom,
-            height: TabBarHeight,
-            borderRadius: 24,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: barHeight,
             borderTopWidth: 0,
             backgroundColor: palette.barSurface,
             shadowColor: palette.dockShadow,
@@ -80,6 +77,7 @@ export default function TabsLayout() {
             shadowRadius: 22,
             elevation: 10,
             paddingTop: 6,
+            paddingBottom: insets.bottom,
           },
         }}>
         <Tabs.Screen
@@ -111,7 +109,7 @@ export default function TabsLayout() {
           style={[
             styles.dock,
             {
-              bottom: barBottom + TabBarHeight + 8,
+              bottom: barHeight + 8,
               width: dockWidth,
               marginLeft: (width - dockWidth) / 2,
             },

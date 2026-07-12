@@ -1,10 +1,11 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
+  InteractionManager,
   useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -26,7 +27,6 @@ import { QueueSheet } from '@/components/ui/queue-sheet';
 import { showToast, ToastHost } from '@/components/ui/toast';
 import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { libraryActions, useIsLiked } from '@/features/library/store';
-import { findActiveLyricIndex } from '@/features/player/lyrics';
 import { playerActions, usePlayer, usePlayerProgress } from '@/features/player/store';
 import type { PlayMode } from '@/features/player/types';
 import { useIsDark, usePalette } from '@/hooks/use-palette';
@@ -89,20 +89,79 @@ function SpinningDisc({ coverUrl, playing, size }: { coverUrl: string | null; pl
   );
 }
 
+function PlaybackProgress() {
+  const palette = usePalette();
+  const { positionMs, durationMs } = usePlayerProgress();
+  const [dragValue, setDragValue] = useState<number | null>(null);
+  const dragValueRef = useRef<number | null>(null);
+  const shownPosition = dragValue ?? positionMs;
+
+  return (
+    <YStack gap={7}>
+      <Slider
+        size="$2"
+        value={[Math.min(shownPosition, Math.max(durationMs, 1))]}
+        max={Math.max(durationMs, 1)}
+        step={250}
+        disabled={!durationMs}
+        onValueChange={(values) => {
+          const next = values[0] ?? 0;
+          dragValueRef.current = next;
+          setDragValue(next);
+        }}
+        onSlideEnd={() => {
+          if (dragValueRef.current !== null) {
+            playerActions.seekToMs(dragValueRef.current);
+          }
+          dragValueRef.current = null;
+          setTimeout(() => setDragValue(null), 180);
+        }}>
+        <Slider.Track backgroundColor={palette.cardAlt} height={4} borderRadius={999}>
+          <Slider.TrackActive backgroundColor={palette.accent} />
+        </Slider.Track>
+        <Slider.Thumb
+          index={0}
+          size={16}
+          circular
+          backgroundColor={palette.accent}
+          borderWidth={2.5}
+          borderColor="#FFFFFF"
+          pressStyle={{
+            scale: 1.2,
+            backgroundColor: palette.accentPressed,
+            borderColor: '#FFFFFF',
+          }}
+          hoverStyle={{ backgroundColor: palette.accent, borderColor: '#FFFFFF' }}
+          shadowColor="#000000"
+          shadowOpacity={0.2}
+          shadowRadius={5}
+          shadowOffset={{ width: 0, height: 2 }}
+        />
+      </Slider>
+      <XStack justifyContent="space-between">
+        <Text color={palette.textTertiary} fontSize={11} fontVariant={['tabular-nums']}>
+          {formatClock(shownPosition)}
+        </Text>
+        <Text color={palette.textTertiary} fontSize={11} fontVariant={['tabular-nums']}>
+          {formatClock(durationMs)}
+        </Text>
+      </XStack>
+    </YStack>
+  );
+}
+
 export default function PlayerScreen() {
   const palette = usePalette();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const player = usePlayer();
-  const { positionMs, durationMs } = usePlayerProgress();
 
   const [pageIndex, setPageIndex] = useState(0);
   const [queueOpen, setQueueOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [likeBusy, setLikeBusy] = useState(false);
-  const [dragValue, setDragValue] = useState<number | null>(null);
-  const dragValueRef = useRef<number | null>(null);
+  const [lyricsMounted, setLyricsMounted] = useState(false);
   const pagerRef = useRef<ScrollView>(null);
 
   const { track, playing, loading, buffering, mode, error, lyrics, lyricsStatus } = player;
@@ -111,6 +170,11 @@ export default function PlayerScreen() {
   useEffect(() => {
     // 提前加载歌单库,让心形按钮反映真实喜欢状态
     void libraryActions.ensure().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setLyricsMounted(true));
+    return () => task.cancel();
   }, []);
 
   function handleToggleLike() {
@@ -129,12 +193,6 @@ export default function PlayerScreen() {
       .finally(() => setLikeBusy(false));
   }
 
-  const shownPosition = dragValue ?? positionMs;
-  const activeLyricIndex = useMemo(
-    () => findActiveLyricIndex(lyrics, positionMs + 240),
-    [lyrics, positionMs]
-  );
-
   const compact = height < 700;
   const discSize = Math.min(width - 104, compact ? 236 : 300);
   const busy = loading || buffering;
@@ -145,6 +203,10 @@ export default function PlayerScreen() {
       setPageIndex(nextIndex);
     }
   }
+
+  const handleSeekLine = useCallback((line: { timeMs: number }) => {
+    playerActions.seekToMs(line.timeMs);
+  }, []);
 
   if (!track) {
     return (
@@ -182,7 +244,7 @@ export default function PlayerScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      <YStack flex={1} paddingTop={insets.top + 6} paddingBottom={Math.max(insets.bottom, 14) + 6}>
+      <YStack flex={1} paddingTop={insets.top + 6} paddingBottom={Math.max(insets.bottom, 14) + 20}>
         {/* 顶栏 */}
         <XStack alignItems="center" justifyContent="space-between" paddingHorizontal={18}>
           <XStack
@@ -259,12 +321,13 @@ export default function PlayerScreen() {
           </YStack>
 
           <YStack width={width} paddingTop={8}>
-            <LyricsView
-              lines={lyrics}
-              activeIndex={activeLyricIndex}
-              status={lyricsStatus}
-              onSeekLine={(line) => playerActions.seekToMs(line.timeMs)}
-            />
+            {lyricsMounted ? (
+              <LyricsView
+                lines={lyrics}
+                status={lyricsStatus}
+                onSeekLine={handleSeekLine}
+              />
+            ) : null}
           </YStack>
         </ScrollView>
 
@@ -312,56 +375,7 @@ export default function PlayerScreen() {
             </XStack>
           </XStack>
 
-          <YStack gap={7}>
-            <Slider
-              size="$2"
-              value={[Math.min(shownPosition, Math.max(durationMs, 1))]}
-              max={Math.max(durationMs, 1)}
-              step={250}
-              disabled={!durationMs}
-              onValueChange={(values) => {
-                const next = values[0] ?? 0;
-                dragValueRef.current = next;
-                setDragValue(next);
-              }}
-              onSlideEnd={() => {
-                if (dragValueRef.current !== null) {
-                  playerActions.seekToMs(dragValueRef.current);
-                }
-                dragValueRef.current = null;
-                setTimeout(() => setDragValue(null), 180);
-              }}>
-              <Slider.Track backgroundColor={palette.cardAlt} height={4} borderRadius={999}>
-                <Slider.TrackActive backgroundColor={palette.accent} />
-              </Slider.Track>
-              <Slider.Thumb
-                index={0}
-                size={16}
-                circular
-                backgroundColor={palette.accent}
-                borderWidth={2.5}
-                borderColor="#FFFFFF"
-                pressStyle={{
-                  scale: 1.2,
-                  backgroundColor: palette.accentPressed,
-                  borderColor: '#FFFFFF',
-                }}
-                hoverStyle={{ backgroundColor: palette.accent, borderColor: '#FFFFFF' }}
-                shadowColor="#000000"
-                shadowOpacity={0.2}
-                shadowRadius={5}
-                shadowOffset={{ width: 0, height: 2 }}
-              />
-            </Slider>
-            <XStack justifyContent="space-between">
-              <Text color={palette.textTertiary} fontSize={11} fontVariant={['tabular-nums']}>
-                {formatClock(shownPosition)}
-              </Text>
-              <Text color={palette.textTertiary} fontSize={11} fontVariant={['tabular-nums']}>
-                {formatClock(durationMs)}
-              </Text>
-            </XStack>
-          </YStack>
+          <PlaybackProgress />
 
           <XStack alignItems="center" justifyContent="space-between">
             <XStack

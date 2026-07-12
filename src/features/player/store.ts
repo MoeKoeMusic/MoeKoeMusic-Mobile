@@ -443,3 +443,15 @@ export function usePlayerProgress(): ProgressState {
     progressStore.getInitialState
   );
 }
+
+type ProgressSelection = string | number | boolean | null | undefined;
+
+export function usePlayerProgressSelector<T extends ProgressSelection>(
+  selector: (state: ProgressState) => T
+): T {
+  return useSyncExternalStore(
+    progressStore.subscribe,
+    () => selector(progressStore.getState()),
+    () => selector(progressStore.getInitialState())
+  );
+}
