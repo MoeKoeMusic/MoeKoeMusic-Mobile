@@ -58,8 +58,18 @@
 
 ## 📸 预览
 
-![](./images/9fa1558a-9766-417e-afe6-9860e348f870.png)
-![](./images/c7c9bf52-4d2b-4b09-986d-4abc7c24c165.png)
+<table>
+  <tr>
+    <td><img src="./images/screen-1.png" alt="Screenshot 1" width="320" /></td>
+    <td><img src="./images/screen-2.png" alt="Screenshot 2" width="320" /></td>
+    <td><img src="./images/screen-3.png" alt="Screenshot 3" width="320" /></td>
+  </tr>
+  <tr>
+    <td><img src="./images/screen-4.png" alt="Screenshot 4" width="320" /></td>
+    <td><img src="./images/screen-5.png" alt="Screenshot 5" width="320" /></td>
+    <td><img src="./images/screen-6.png" alt="Screenshot 6" width="320" /></td>
+  </tr>
+</table>
 
 ## 🚀 快速开始
 
