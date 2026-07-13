@@ -179,6 +179,12 @@ export default function PlayerScreen() {
   }, []);
 
   useEffect(() => {
+    if (pageIndex === 1) {
+      void playerActions.loadLyrics();
+    }
+  }, [pageIndex, track?.hash]);
+
+  useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       router.dismiss();
       return true;

@@ -192,7 +192,7 @@ async function loadTrackAt(index: number, options?: { autoplay?: boolean }) {
     loading: true,
     error: '',
     lyrics: [],
-    lyricsStatus: 'loading',
+    lyricsStatus: 'idle',
   });
   progressStore.setState({ positionMs: 0, durationMs: track.durationMs ?? 0 });
 
@@ -217,8 +217,6 @@ async function loadTrackAt(index: number, options?: { autoplay?: boolean }) {
       progressStore.setState({ durationMs: source.durationMs });
     }
 
-    // 歌词延后到确认可播放之后再取，跳歌链路上不浪费请求
-    void loadLyricsFor(track, sequence);
   } catch (error) {
     if (sequence !== loadSequence) {
       return;
@@ -272,6 +270,17 @@ async function skip(step: 1 | -1, auto = false) {
 }
 
 export const playerActions = {
+  async loadLyrics() {
+    const { track, lyricsStatus } = playerStore.getState();
+    if (!track || lyricsStatus !== 'idle') {
+      return;
+    }
+
+    const sequence = loadSequence;
+    playerStore.setState({ lyricsStatus: 'loading' });
+    await loadLyricsFor(track, sequence);
+  },
+
   async playTracks(tracks: PlayerTrack[], startIndex = 0) {
     const playable = tracks.filter((track) => track.hash);
     if (!playable.length) {
