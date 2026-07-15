@@ -1,11 +1,12 @@
 {
   "name": "moekoe",
   "main": "expo-router/entry",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "MoeKoe mobile app",
   "scripts": {
     "start": "expo start",
     "generate:mobile-api": "node ./scripts/generate-mobile-api-entry.mjs",
+    "release:version": "node ./scripts/update-version.mjs",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",

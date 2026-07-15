@@ -39,23 +39,6 @@ jobs:
           npm --prefix api install
           npm run generate:mobile-api
 
-      # 用 tag 名同步 app.json 的版本号（v1.2.3 -> 1.2.3），versionCode 取自增的运行编号
-      - name: Sync app version with tag
-        if: github.ref_type == 'tag'
-        env:
-          VERSION: ${{ github.ref_name }}
-          RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          node <<'EOF'
-          const fs = require('fs');
-          const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
-          const version = process.env.VERSION.replace(/^v/, '');
-          config.expo.version = version;
-          config.expo.ios.buildNumber = version;
-          config.expo.android.versionCode = Number(process.env.RUN_NUMBER);
-          fs.writeFileSync('app.json', JSON.stringify(config, null, 2) + '\n');
-          EOF
-
       - name: Prebuild Android project
         run: npx expo prebuild --platform android --no-install
 
@@ -122,22 +105,6 @@ jobs:
           npm ci
           npm --prefix api install
           npm run generate:mobile-api
-
-      - name: Sync app version with tag
-        if: github.ref_type == 'tag'
-        env:
-          VERSION: ${{ github.ref_name }}
-          RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          node <<'EOF'
-          const fs = require('fs');
-          const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
-          const version = process.env.VERSION.replace(/^v/, '');
-          config.expo.version = version;
-          config.expo.ios.buildNumber = version;
-          config.expo.android.versionCode = Number(process.env.RUN_NUMBER);
-          fs.writeFileSync('app.json', JSON.stringify(config, null, 2) + '\n');
-          EOF
 
       - name: Prebuild iOS project
         run: npx expo prebuild --platform ios --no-install
