@@ -104,7 +104,7 @@ export function MiniPlayer() {
         transition="quickest"
         pressStyle={{ scale: 0.985 }}
         onPress={openPlayer}>
-        <Animated.View style={spinStyle}>
+        <Animated.View style={[{ width: 40, height: 40 }, spinStyle]}>
           <Artwork uri={track.coverUrl} size={40} circle />
         </Animated.View>
 

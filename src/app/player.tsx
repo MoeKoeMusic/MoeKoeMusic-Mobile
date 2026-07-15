@@ -62,7 +62,7 @@ function SpinningDisc({ coverUrl, playing, size }: { coverUrl: string | null; pl
   }));
 
   return (
-    <Animated.View style={spinStyle}>
+    <Animated.View style={[{ width: size, height: size }, spinStyle]}>
       <YStack
         width={size}
         height={size}
