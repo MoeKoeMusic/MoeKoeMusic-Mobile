@@ -76,7 +76,7 @@
 
 ### 环境要求
 
-- [Node.js](https://nodejs.org/) ≥ 20
+- [Node.js](https://nodejs.org/) ≥ 22
 - [Git](https://git-scm.com/)
 - iOS 模拟器 / Android 模拟器，或安装了开发版客户端的真机
 
