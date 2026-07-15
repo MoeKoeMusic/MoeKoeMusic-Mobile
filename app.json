@@ -10,6 +10,14 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
+    "updates": {
+      "url": "https://u.expo.dev/b40e70cf-7d4b-4a09-8f1d-c17b730e6d96",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      },
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "ios": {
       "bundleIdentifier": "cn.moekoe.music",
       "buildNumber": "1.1.0",
