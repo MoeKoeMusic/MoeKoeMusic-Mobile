@@ -42,7 +42,6 @@ const MODE_ICON: Record<PlayMode, 'repeat' | 'repeat-once' | 'shuffle-variant'> 
 
 function SpinningDisc({ coverUrl, playing, size }: { coverUrl: string | null; playing: boolean; size: number }) {
   const isDark = useIsDark();
-  const palette = usePalette();
   const rotation = useSharedValue(0);
 
   useEffect(() => {
