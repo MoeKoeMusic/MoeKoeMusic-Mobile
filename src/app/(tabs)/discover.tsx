@@ -23,7 +23,8 @@ import {
   type DiscoverPlaylist,
   type RankGroup,
 } from '@/features/discover/discover-api';
-import { playerActions, usePlayer } from '@/features/player/store';
+import { playCollection } from '@/features/player/play-collection';
+import { usePlayer } from '@/features/player/store';
 import type { PlayerTrack } from '@/features/player/types';
 import { useDockContentInset } from '@/hooks/use-dock-inset';
 import { usePalette } from '@/hooks/use-palette';
@@ -568,6 +569,17 @@ function NewSongPane({ bottomInset }: { bottomInset: number }) {
 
   const activeHash = track?.hash;
 
+  /** 从第 index 首开始播放整个新歌列表：先播已加载的，后台补齐剩余分页。 */
+  function playFrom(index: number) {
+    void playCollection({
+      tracks,
+      startIndex: index,
+      loadedPage: page,
+      hasMore,
+      loadPage: fetchNewSongs,
+    });
+  }
+
   return (
     <>
       <FlatList
@@ -596,7 +608,7 @@ function NewSongPane({ bottomInset }: { bottomInset: number }) {
             paddingBottom={8}
             alignSelf="flex-start"
             pressStyle={{ opacity: 0.6 }}
-            onPress={() => void playerActions.playTracks(tracks, 0)}>
+            onPress={() => playFrom(0)}>
             <Ionicons name="play-circle" size={17} color={palette.accent} />
             <Text color={palette.accent} fontSize={13.5} fontWeight="600">
               播放全部
@@ -624,7 +636,7 @@ function NewSongPane({ bottomInset }: { bottomInset: number }) {
         <SongListItem
           track={item}
           active={item.hash === activeHash}
-          onPress={() => void playerActions.playTracks(tracks, index)}
+          onPress={() => playFrom(index)}
           onMore={() => setActionTrack(item)}
         />
       )}

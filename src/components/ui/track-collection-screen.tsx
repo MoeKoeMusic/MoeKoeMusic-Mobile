@@ -11,7 +11,8 @@ import { MiniPlayer, MINI_PLAYER_HEIGHT } from '@/components/ui/mini-player';
 import { SongListItem } from '@/components/ui/song-list-item';
 import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { MaxContentWidth } from '@/constants/theme';
-import { playerActions, useHasTrack, usePlayer } from '@/features/player/store';
+import { playCollection } from '@/features/player/play-collection';
+import { useHasTrack, usePlayer } from '@/features/player/store';
 import type { PlayerTrack } from '@/features/player/types';
 import { useIsDark, usePalette } from '@/hooks/use-palette';
 
@@ -135,6 +136,17 @@ export function TrackCollectionScreen({
   const listBottomInset = insets.bottom + (hasTrack ? MINI_PLAYER_HEIGHT + 26 : 16) + 16;
   const countText = state.total > 0 ? `共 ${state.total} 首` : state.tracks.length ? `${state.tracks.length} 首` : '';
 
+  /** 从第 index 首开始播放整个集合：先播已加载的，后台补齐剩余分页到队列。 */
+  function playFrom(index: number) {
+    void playCollection({
+      tracks: state.tracks,
+      startIndex: index,
+      loadedPage: state.page,
+      hasMore: state.hasMore,
+      loadPage,
+    });
+  }
+
   return (
     <View flex={1} backgroundColor={palette.background}>
       <LinearGradient
@@ -225,7 +237,7 @@ export function TrackCollectionScreen({
                 backgroundColor={palette.accent}
                 transition="quickest"
                 pressStyle={{ opacity: 0.85, scale: 0.97 }}
-                onPress={() => void playerActions.playTracks(state.tracks, 0)}>
+                onPress={() => playFrom(0)}>
                 <Ionicons name="play" size={16} color={palette.onAccent} />
                 <Text color={palette.onAccent} fontSize={14.5} fontWeight="700">
                   播放全部
@@ -276,7 +288,7 @@ export function TrackCollectionScreen({
             track={item}
             rank={showRank ? index + 1 : undefined}
             active={item.hash === activeHash}
-            onPress={() => void playerActions.playTracks(state.tracks, index)}
+            onPress={() => playFrom(index)}
             onMore={() => setActionTrack(item)}
           />
         )}

@@ -23,6 +23,7 @@ import { SongListItem } from '@/components/ui/song-list-item';
 import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { MaxContentWidth } from '@/constants/theme';
 import { isLoggedIn } from '@/features/account/user-api';
+import { playCollection } from '@/features/player/play-collection';
 import { playerActions, useHasTrack, usePlayer } from '@/features/player/store';
 import type { PlayerTrack } from '@/features/player/types';
 import {
@@ -373,6 +374,20 @@ export default function SearchScreen() {
   );
   const hasContent = results.tab === 'complex' ? hasComplexContent : results.items.length > 0;
 
+  /** 从第 index 首开始播放整个“单曲”搜索结果：先播已加载的，后台补齐剩余分页。 */
+  function playSongsFrom(index: number) {
+    void playCollection({
+      tracks: results.items as PlayerTrack[],
+      startIndex: index,
+      loadedPage: results.page,
+      hasMore: results.hasMore,
+      loadPage: async (page) => {
+        const result = await searchSongs(results.keyword, page);
+        return { tracks: result.tracks, hasMore: result.hasMore };
+      },
+    });
+  }
+
   /* ---------- 综合页的分区标题 ---------- */
 
   function SectionHeader({
@@ -496,7 +511,7 @@ export default function SearchScreen() {
         <SongListItem
           track={song}
           active={song.hash === activeHash}
-          onPress={() => void playerActions.playTracks(results.items as PlayerTrack[], index)}
+          onPress={() => playSongsFrom(index)}
           onMore={() => setActionTrack(song)}
         />
       );
@@ -728,9 +743,7 @@ export default function SearchScreen() {
                       alignItems="center"
                       gap={5}
                       pressStyle={{ opacity: 0.6 }}
-                      onPress={() =>
-                        void playerActions.playTracks(results.items as PlayerTrack[], 0)
-                      }>
+                      onPress={() => playSongsFrom(0)}>
                       <Ionicons name="play-circle" size={17} color={palette.accent} />
                       <Text color={palette.accent} fontSize={13.5} fontWeight="600">
                         播放全部

@@ -91,6 +91,8 @@ let audioPlayer: AudioPlayer | null = null;
 let loadSequence = 0;
 let failStreak = 0;
 let advanceTimer: ReturnType<typeof setTimeout> | null = null;
+// 每次“建立新队列”都会自增；后台补齐歌单剩余曲目时靠它判断队列是否已被替换。
+let queueGeneration = 0;
 
 // expo-audio 单 player 的锁屏/通知栏没有上一首/下一首命令(原生侧明确移除),
 // 只有 播放暂停+进度条+±10 秒;切歌按钮需迁移原生队列(AudioPlaylist),暂不做。
@@ -269,6 +271,11 @@ async function skip(step: 1 | -1, auto = false) {
   await loadTrackAt(nextIndex);
 }
 
+/** 当前队列的 generation 是否仍是 expected（供后台补齐判断队列是否已被替换/清空）。 */
+export function isCurrentQueueGeneration(expected: number): boolean {
+  return expected === queueGeneration;
+}
+
 export const playerActions = {
   async loadLyrics() {
     const { track, lyricsStatus } = playerStore.getState();
@@ -281,10 +288,15 @@ export const playerActions = {
     await loadLyricsFor(track, sequence);
   },
 
-  async playTracks(tracks: PlayerTrack[], startIndex = 0) {
+  /**
+   * 用一批曲目建立新队列并从 startIndex 开始播放。
+   * 返回本次队列的 generation，供 appendTracks 后台补齐时校验队列未被替换；
+   * 无可播曲目时返回 null。
+   */
+  async playTracks(tracks: PlayerTrack[], startIndex = 0): Promise<number | null> {
     const playable = tracks.filter((track) => track.hash);
     if (!playable.length) {
-      return;
+      return null;
     }
 
     const targetHash = tracks[startIndex]?.hash;
@@ -294,8 +306,33 @@ export const playerActions = {
     );
 
     failStreak = 0;
+    const generation = ++queueGeneration;
     playerStore.setState({ queue: playable });
     await loadTrackAt(index);
+    return generation;
+  },
+
+  /**
+   * 把后续分页的曲目追加到当前队列末尾（按 hash 去重）。
+   * generation 与当前队列不一致（队列已被替换/清空）时不追加并返回 false。
+   */
+  appendTracks(tracks: PlayerTrack[], generation: number): boolean {
+    if (generation !== queueGeneration) {
+      return false;
+    }
+
+    const { queue } = playerStore.getState();
+    if (!queue.length) {
+      return false;
+    }
+
+    const seen = new Set(queue.map((track) => track.hash));
+    const fresh = tracks.filter((track) => track.hash && !seen.has(track.hash));
+    if (fresh.length) {
+      playerStore.setState({ queue: [...queue, ...fresh] });
+    }
+
+    return true;
   },
 
   async playTrackNow(track: PlayerTrack) {
@@ -310,6 +347,8 @@ export const playerActions = {
       return;
     }
 
+    // 插播只是把歌插到当前曲目之后，不改变队列归属：
+    // 歌单的后台补齐继续追加到队尾，顺序仍与歌单一致。
     const nextQueue = [...queue];
     nextQueue.splice(index + 1, 0, track);
     failStreak = 0;
@@ -413,6 +452,7 @@ export const playerActions = {
 
   clearQueue() {
     loadSequence += 1;
+    queueGeneration += 1;
     if (advanceTimer) {
       clearTimeout(advanceTimer);
       advanceTimer = null;

@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useWindowDimensions } from 'react-native';
+import { useState } from 'react';
+import { useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Sheet, Text, XStack, YStack } from 'tamagui';
 
@@ -20,12 +21,15 @@ const MODE_LABEL: Record<string, string> = {
 const QUEUE_ITEM_HEIGHT = 58;
 const QUEUE_HEADER_HEIGHT = 78;
 const QUEUE_MAX_HEIGHT_RATIO = 0.68;
+/** 可视区外上下各多渲染的行数；配合滚动量化阈值保证快滑不露白。 */
+const QUEUE_OVERSCAN_ROWS = 10;
 
 export function QueueSheet({ open, onOpenChange }: QueueSheetProps) {
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const { queue, index, mode } = usePlayer();
+  const [scrollTop, setScrollTop] = useState(0);
   const frameBottomPadding = Math.max(insets.bottom, 16) + 6;
   const maxListHeight = Math.max(
     QUEUE_ITEM_HEIGHT * 3,
@@ -33,6 +37,28 @@ export function QueueSheet({ open, onOpenChange }: QueueSheetProps) {
   );
   const listContentHeight = queue.length * QUEUE_ITEM_HEIGHT;
   const listScrollable = listContentHeight > maxListHeight;
+
+  // 队列现在会装下整个歌单（可达上千首），全部渲染会卡顿：
+  // 行高固定，按滚动位置只渲染可视窗口，上下用占位块撑起总高度。
+  // scrollTop 在队列被替换成更短队列时可能是过期值，窗口起点按队列长度收口，
+  // 保证可视区始终有内容（ScrollView 自身会把越界偏移收回）。
+  const visibleRows = Math.ceil(maxListHeight / QUEUE_ITEM_HEIGHT);
+  const maxWindowStart = Math.max(0, queue.length - visibleRows - QUEUE_OVERSCAN_ROWS);
+  const windowStart = Math.min(
+    Math.max(0, Math.floor(scrollTop / QUEUE_ITEM_HEIGHT) - QUEUE_OVERSCAN_ROWS),
+    maxWindowStart
+  );
+  const windowEnd = Math.min(
+    queue.length,
+    windowStart + visibleRows + QUEUE_OVERSCAN_ROWS * 2
+  );
+  const visibleTracks = queue.slice(windowStart, windowEnd);
+
+  function handleListScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    const y = Math.max(0, event.nativeEvent.contentOffset.y);
+    // 量化：滚过约 3 行才更新窗口，避免每帧重渲染；overscan 覆盖间隙。
+    setScrollTop((prev) => (Math.abs(prev - y) >= QUEUE_ITEM_HEIGHT * 3 ? y : prev));
+  }
 
   return (
     <Sheet
@@ -95,16 +121,19 @@ export function QueueSheet({ open, onOpenChange }: QueueSheetProps) {
           bounces={listScrollable}
           alwaysBounceVertical={false}
           overScrollMode="never"
+          onScroll={handleListScroll}
           style={{ maxHeight: maxListHeight }}>
-          <YStack paddingHorizontal="$3" paddingBottom="$4" gap={2}>
-            {queue.map((track, itemIndex) => {
+          <YStack paddingHorizontal="$3" paddingBottom="$4">
+            {windowStart > 0 ? <YStack height={windowStart * QUEUE_ITEM_HEIGHT} /> : null}
+            {visibleTracks.map((track, offset) => {
+              const itemIndex = windowStart + offset;
               const active = itemIndex === index;
               return (
                 <XStack
                   key={`${track.hash}-${itemIndex}`}
+                  height={QUEUE_ITEM_HEIGHT}
                   alignItems="center"
                   gap={12}
-                  paddingVertical={11}
                   paddingHorizontal={12}
                   borderRadius={14}
                   backgroundColor={active ? palette.accentSoft : 'transparent'}
@@ -151,6 +180,9 @@ export function QueueSheet({ open, onOpenChange }: QueueSheetProps) {
                 </XStack>
               );
             })}
+            {windowEnd < queue.length ? (
+              <YStack height={(queue.length - windowEnd) * QUEUE_ITEM_HEIGHT} />
+            ) : null}
           </YStack>
         </Sheet.ScrollView>
       </Sheet.Frame>
