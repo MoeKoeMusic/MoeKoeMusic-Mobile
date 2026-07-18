@@ -19,11 +19,19 @@ function pickErrorCode(error: unknown): number {
     return 0;
   }
   const record = error as Record<string, unknown>;
+  const bodyCode = pickNumber(toRecord(record.body).error_code);
+  if (bodyCode) {
+    return bodyCode;
+  }
+  const responseCode = pickNumber(toRecord(toRecord(record.response).data).error_code);
+  if (responseCode) {
+    return responseCode;
+  }
   const direct = pickNumber(record.error_code, record.status);
   if (direct) {
     return direct;
   }
-  return pickNumber(toRecord(record.body).error_code);
+  return 0;
 }
 
 /**
@@ -72,6 +80,13 @@ export async function upgradeDailyVip(): Promise<VipSignInResult> {
     const msg = pickText(body.error_msg);
     return { message: msg || '升级失败，一天仅限一次', alreadyDone: true };
   } catch (error) {
+    const code = pickErrorCode(error);
+    if (code === 131001) {
+      return { message: '你今天已经签到过了', alreadyDone: true };
+    }
+    if (code === 20028) {
+      return { message: '当前账号风控,请前往手机端领取', alreadyDone: true };
+    }
     const msg = pickText(toRecord((error as Record<string, unknown>)?.body).error_msg);
     throw new Error(msg || '升级 VIP 失败，一天仅限一次');
   }
