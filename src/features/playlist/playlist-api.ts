@@ -60,7 +60,7 @@ export async function fetchPlaylistTracks(
         album: pickText(albumInfo.name) || undefined,
         coverUrl: sizedImage(pickText(item.cover), 240),
         albumId: pickStringLike(item.album_id) || undefined,
-        albumAudioId: pickStringLike(item.audio_id, item.mixsongid) || undefined,
+        albumAudioId: pickStringLike(item.album_audio_id, item.audio_id, item.mixsongid) || undefined,
         durationMs: normalizeDurationMs(item.timelen),
         vip: pickNumber(item.privilege) >= 10 || undefined,
         quality: detectAudioQuality(item),
