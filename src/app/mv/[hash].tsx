@@ -16,9 +16,11 @@ export default function MvScreen() {
   const hash = typeof params.hash === 'string' ? params.hash : '';
   const title = typeof params.title === 'string' && params.title ? params.title : '视频播放';
 
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [result, setResult] = useState<{
+    hash: string;
+    videoUrl: string | null;
+    error: string;
+  } | null>(null);
 
   useEffect(() => {
     // 打开 MV 时暂停后台音频，避免声音叠加。
@@ -28,32 +30,23 @@ export default function MvScreen() {
   useEffect(() => {
     let cancelled = false;
     if (!hash) {
-      setError('缺少视频参数');
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setError('');
     fetchMvUrl(hash)
       .then((url) => {
         if (cancelled) {
           return;
         }
         if (url) {
-          setVideoUrl(url);
+          setResult({ hash, videoUrl: url, error: '' });
         } else {
-          setError('获取视频播放地址失败');
+          setResult({ hash, videoUrl: null, error: '获取视频播放地址失败' });
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setError('加载视频失败，请稍后重试');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
+          setResult({ hash, videoUrl: null, error: '加载视频失败，请稍后重试' });
         }
       });
 
@@ -61,6 +54,11 @@ export default function MvScreen() {
       cancelled = true;
     };
   }, [hash]);
+
+  const currentResult = result?.hash === hash ? result : null;
+  const videoUrl = currentResult?.videoUrl ?? null;
+  const loading = Boolean(hash) && !currentResult;
+  const error = hash ? (currentResult?.error ?? '') : '缺少视频参数';
 
   const player = useVideoPlayer(videoUrl, (instance) => {
     instance.play();
