@@ -64,6 +64,15 @@ type SectionResult<T> = {
   error: string | null;
 };
 
+function shuffle<T>(items: T[]): T[] {
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+  }
+  return result;
+}
+
 function formatSongNote(note: string) {
   if (/^\d{8}$/.test(note)) {
     return `${note.slice(0, 4)}.${note.slice(4, 6)}.${note.slice(6, 8)}`;
@@ -147,10 +156,10 @@ export async function loadHomeData(): Promise<HomeData> {
         const response = await mobileApi.everyday_recommend({ platform: 'ios' });
         const data = toRecord(toRecord(response.body).data);
 
-        return toRecords(data.song_list)
+        const songs = toRecords(data.song_list)
           .map(normalizeSong)
-          .filter((item): item is HomeSong => Boolean(item))
-          .slice(0, 6);
+          .filter((item): item is HomeSong => Boolean(item));
+        return shuffle(songs).slice(0, 24);
       }),
       loadSection('推荐歌单', async () => {
         const response = await mobileApi.top_playlist({

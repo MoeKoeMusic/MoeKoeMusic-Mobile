@@ -5,6 +5,7 @@ import { RefreshControl, ScrollView, StyleSheet, useWindowDimensions } from 'rea
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 
+import { Artwork } from '@/components/ui/artwork';
 import { BannerCarousel } from '@/components/ui/banner-carousel';
 import { PlaylistCard } from '@/components/ui/playlist-card';
 import { RankCard } from '@/components/ui/rank-card';
@@ -12,7 +13,7 @@ import { SectionHeader } from '@/components/ui/section-header';
 import { SongListItem } from '@/components/ui/song-list-item';
 import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
 import { MaxContentWidth, WideBreakpoint } from '@/constants/theme';
-import { loadHomeData, type HomeData } from '@/features/home/load-home-data';
+import { loadHomeData, type HomeData, type HomeSong } from '@/features/home/load-home-data';
 import { playerActions, usePlayer } from '@/features/player/store';
 import type { PlayerTrack } from '@/features/player/types';
 import { useDockContentInset } from '@/hooks/use-dock-inset';
@@ -25,6 +26,93 @@ type ScreenState = {
   refreshing: boolean;
   errorMessage: string;
 };
+
+const DAILY_COLUMN_SIZE = 6;
+
+function chunkSongs<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function HomeSongCard({
+  song,
+  active,
+  width,
+  onPress,
+  onMore,
+}: {
+  song: HomeSong;
+  active: boolean;
+  width: number;
+  onPress: () => void;
+  onMore: () => void;
+}) {
+  const palette = usePalette();
+
+  return (
+    <YStack
+      width={width}
+      gap={8}
+      padding={8}
+      borderRadius={18}
+      backgroundColor={active ? palette.accentSoft : palette.card}
+      borderWidth={StyleSheet.hairlineWidth}
+      borderColor={active ? palette.accentBorder : palette.border}
+      transition="quickest"
+      pressStyle={{ opacity: 0.75, scale: 0.98 }}
+      onPress={onPress}>
+      <View>
+        <Artwork uri={song.coverUrl} radius={14} />
+        <XStack
+          position="absolute"
+          right={7}
+          top={7}
+          width={30}
+          height={30}
+          borderRadius={15}
+          alignItems="center"
+          justifyContent="center"
+          backgroundColor="rgba(12, 12, 18, 0.54)"
+          pressStyle={{ opacity: 0.65, scale: 0.92 }}
+          onPress={(event) => {
+            event.stopPropagation();
+            onMore();
+          }}>
+          <Ionicons name="ellipsis-horizontal" size={16} color="#FFFFFF" />
+        </XStack>
+        {active ? (
+          <XStack
+            position="absolute"
+            left={7}
+            bottom={7}
+            width={28}
+            height={28}
+            borderRadius={14}
+            alignItems="center"
+            justifyContent="center"
+            backgroundColor="rgba(12, 12, 18, 0.54)">
+            <Ionicons name="pulse" size={15} color="#FFFFFF" />
+          </XStack>
+        ) : null}
+      </View>
+      <YStack gap={3} paddingHorizontal={2}>
+        <Text
+          color={active ? palette.accent : palette.text}
+          fontSize={13.5}
+          fontWeight="700"
+          numberOfLines={1}>
+          {song.title}
+        </Text>
+        <Text color={palette.textSecondary} fontSize={12} numberOfLines={1}>
+          {song.artist || '未知歌手'}
+        </Text>
+      </YStack>
+    </YStack>
+  );
+}
 
 export default function HomeScreen() {
   const palette = usePalette();
@@ -49,6 +137,7 @@ export default function HomeScreen() {
   );
   const bannerWidth = Math.min(contentWidth, 560);
   const bannerHeight = Math.round(bannerWidth * 0.44);
+  const songCardWidth = Math.min(156, Math.max(136, Math.floor(contentWidth * 0.42)));
 
   async function refreshHome(mode: 'initial' | 'refresh' = 'initial') {
     const requestId = ++requestIdRef.current;
@@ -145,6 +234,7 @@ export default function HomeScreen() {
 
   const { homeData } = state;
   const activeHash = track?.hash;
+  const dailyColumns = chunkSongs(homeData.dailySongs, DAILY_COLUMN_SIZE);
 
   return (
     <View flex={1} backgroundColor={palette.background}>
@@ -237,30 +327,42 @@ export default function HomeScreen() {
         ) : null}
 
         {homeData.dailySongs.length ? (
-          <YStack gap={10}>
+          <YStack gap={12}>
             <SectionHeader
               title="每日推荐"
               subtitle="根据你的口味每天更新"
               actionLabel="播放全部"
               onAction={() => void playerActions.playTracks(homeData.dailySongs, 0)}
             />
-            <YStack
-              backgroundColor={palette.card}
-              borderRadius={20}
-              borderWidth={StyleSheet.hairlineWidth}
-              borderColor={palette.border}
-              paddingVertical={6}
-              paddingHorizontal={4}>
-              {homeData.dailySongs.map((song, index) => (
-                <SongListItem
-                  key={song.hash}
-                  track={song}
-                  active={song.hash === activeHash}
-                  onPress={() => void playerActions.playTracks(homeData.dailySongs, index)}
-                  onMore={() => setActionTrack(song)}
-                />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.dailyColumns}>
+              {dailyColumns.map((column, columnIndex) => (
+                <YStack
+                  key={`daily-column-${columnIndex}`}
+                  width={contentWidth}
+                  backgroundColor={palette.card}
+                  borderRadius={20}
+                  borderWidth={StyleSheet.hairlineWidth}
+                  borderColor={palette.border}
+                  paddingVertical={6}
+                  paddingHorizontal={4}>
+                  {column.map((song, rowIndex) => {
+                    const index = columnIndex * DAILY_COLUMN_SIZE + rowIndex;
+                    return (
+                      <SongListItem
+                        key={`${song.hash}-${index}`}
+                        track={song}
+                        active={song.hash === activeHash}
+                        onPress={() => void playerActions.playTracks(homeData.dailySongs, index)}
+                        onMore={() => setActionTrack(song)}
+                      />
+                    );
+                  })}
+                </YStack>
               ))}
-            </YStack>
+            </ScrollView>
           </YStack>
         ) : null}
 
@@ -314,30 +416,28 @@ export default function HomeScreen() {
         ) : null}
 
         {homeData.newSongs.length ? (
-          <YStack gap={10}>
+          <YStack gap={12}>
             <SectionHeader
               title="新歌速递"
               subtitle="最新上架的好声音"
               actionLabel="播放全部"
               onAction={() => void playerActions.playTracks(homeData.newSongs, 0)}
             />
-            <YStack
-              backgroundColor={palette.card}
-              borderRadius={20}
-              borderWidth={StyleSheet.hairlineWidth}
-              borderColor={palette.border}
-              paddingVertical={6}
-              paddingHorizontal={4}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.songCardList}>
               {homeData.newSongs.map((song, index) => (
-                <SongListItem
+                <HomeSongCard
                   key={`new-${song.hash}`}
-                  track={song}
+                  song={song}
                   active={song.hash === activeHash}
+                  width={songCardWidth}
                   onPress={() => void playerActions.playTracks(homeData.newSongs, index)}
                   onMore={() => setActionTrack(song)}
                 />
               ))}
-            </YStack>
+            </ScrollView>
           </YStack>
         ) : null}
       </ScrollView>
@@ -365,6 +465,14 @@ const styles = StyleSheet.create({
   },
   rankList: {
     gap: 14,
+    paddingRight: 4,
+  },
+  dailyColumns: {
+    gap: 12,
+    paddingRight: 4,
+  },
+  songCardList: {
+    gap: 12,
     paddingRight: 4,
   },
 });
