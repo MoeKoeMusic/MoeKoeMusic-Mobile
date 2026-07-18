@@ -62,31 +62,22 @@ function SpinningDisc({ coverUrl, playing, size }: { coverUrl: string | null; pl
   }));
 
   return (
-    <Animated.View style={[{ width: size, height: size }, spinStyle]}>
-      <YStack
-        width={size}
-        height={size}
-        borderRadius={size / 2}
-        alignItems="center"
-        justifyContent="center"
-        backgroundColor={isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.75)'}
-        shadowColor="#000000"
-        shadowOffset={{ width: 0, height: 18 }}
-        shadowOpacity={isDark ? 0.5 : 0.18}
-        shadowRadius={30}
-        elevation={16}>
+    <YStack
+      width={size}
+      height={size}
+      borderRadius={size / 2}
+      alignItems="center"
+      justifyContent="center"
+      backgroundColor={isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.75)'}
+      shadowColor="#000000"
+      shadowOffset={{ width: 0, height: 18 }}
+      shadowOpacity={isDark ? 0.5 : 0.18}
+      shadowRadius={30}
+      elevation={16}>
+      <Animated.View style={spinStyle}>
         <Artwork uri={coverUrl} size={size - 26} circle />
-        <View
-          position="absolute"
-          width={15}
-          height={15}
-          borderRadius={8}
-          backgroundColor={palette.card}
-          borderWidth={3}
-          borderColor={isDark ? 'rgba(255,255,255,0.25)' : 'rgba(18, 19, 31, 0.16)'}
-        />
-      </YStack>
-    </Animated.View>
+      </Animated.View>
+    </YStack>
   );
 }
 
