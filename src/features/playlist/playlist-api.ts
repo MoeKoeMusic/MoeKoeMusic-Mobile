@@ -31,18 +31,20 @@ export async function fetchPlaylistTracks(
 
   const data = toRecord(toRecord(response.body).data);
   const listInfo = toRecord(data.list_info);
-  const count = pickNumber(listInfo.count);
+  const count = pickNumber(data.count, listInfo.count);
 
-  const info: PlaylistInfo | null = pickText(listInfo.name)
+  const name = pickText(listInfo.name);
+  const info: PlaylistInfo | null = name || count > 0
     ? {
-        name: pickText(listInfo.name),
+        name,
         intro: pickText(listInfo.intro),
         coverUrl: sizedImage(pickText(listInfo.pic), 480),
         count,
       }
     : null;
 
-  const tracks = toRecords(data.songs)
+  const songs = toRecords(data.songs);
+  const tracks = songs
     .map<PlayerTrack | null>((item) => {
       const hash = pickText(item.hash);
       const rawName = pickText(item.name);
@@ -72,6 +74,9 @@ export async function fetchPlaylistTracks(
   return {
     info,
     tracks,
-    hasMore: count > 0 ? page * PLAYLIST_PAGE_SIZE < count : tracks.length === PLAYLIST_PAGE_SIZE,
+    hasMore:
+      count > 0
+        ? songs.length >= PLAYLIST_PAGE_SIZE && page * PLAYLIST_PAGE_SIZE < count
+        : songs.length >= PLAYLIST_PAGE_SIZE,
   };
 }
