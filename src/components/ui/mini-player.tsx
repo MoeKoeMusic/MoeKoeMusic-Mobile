@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { isGlassEffectAPIAvailable, GlassView } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { StyleSheet } from 'react-native';
@@ -19,6 +20,9 @@ import { playerActions, usePlayer, usePlayerProgress } from '@/features/player/s
 import { useIsDark, usePalette } from '@/hooks/use-palette';
 
 export const MINI_PLAYER_HEIGHT = 58;
+
+/** 液态玻璃仅在支持的 iOS 上可用；其余平台回退到半透明底色。 */
+const GLASS_AVAILABLE = isGlassEffectAPIAvailable();
 
 let lastOpenPlayerAt = 0;
 
@@ -85,25 +89,24 @@ export function MiniPlayer() {
     router.push('/player');
   }
 
-  return (
-    <Animated.View entering={FadeInDown.duration(260)} exiting={FadeOutDown.duration(200)}>
-      <XStack
-        height={MINI_PLAYER_HEIGHT}
-        alignItems="center"
-        gap={10}
-        paddingHorizontal={12}
-        borderRadius={22}
-        borderWidth={StyleSheet.hairlineWidth}
-        borderColor={palette.border}
-        backgroundColor={palette.barSurface}
-        shadowColor={palette.dockShadow}
-        shadowOffset={{ width: 0, height: isDark ? 3 : 8 }}
-        shadowOpacity={isDark ? 0.18 : 0.1}
-        shadowRadius={isDark ? 8 : 16}
-        elevation={isDark ? 0 : 8}
-        transition="quickest"
-        pressStyle={{ scale: 0.985 }}
-        onPress={openPlayer}>
+  const pill = (
+    <XStack
+      height={MINI_PLAYER_HEIGHT}
+      alignItems="center"
+      gap={10}
+      paddingHorizontal={12}
+      borderRadius={22}
+      borderWidth={GLASS_AVAILABLE ? 0 : StyleSheet.hairlineWidth}
+      borderColor={palette.border}
+      backgroundColor={GLASS_AVAILABLE ? 'transparent' : palette.barSurface}
+      shadowColor={palette.dockShadow}
+      shadowOffset={{ width: 0, height: isDark ? 3 : 8 }}
+      shadowOpacity={isDark ? 0.18 : 0.1}
+      shadowRadius={isDark ? 8 : 16}
+      elevation={isDark ? 0 : 8}
+      transition="quickest"
+      pressStyle={{ scale: 0.985 }}
+      onPress={openPlayer}>
         <Animated.View style={[{ width: 40, height: 40 }, spinStyle]}>
           <Artwork uri={track.coverUrl} size={40} circle />
         </Animated.View>
@@ -158,6 +161,20 @@ export function MiniPlayer() {
 
         <ProgressHairline />
       </XStack>
+  );
+
+  return (
+    <Animated.View entering={FadeInDown.duration(260)} exiting={FadeOutDown.duration(200)}>
+      {GLASS_AVAILABLE ? (
+        <GlassView
+          style={{ height: MINI_PLAYER_HEIGHT, borderRadius: 22, overflow: 'hidden' }}
+          glassEffectStyle="regular"
+          isInteractive>
+          {pill}
+        </GlassView>
+      ) : (
+        pill
+      )}
     </Animated.View>
   );
 }

@@ -1,6 +1,7 @@
 import '@/global.css';
 
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
@@ -19,6 +20,14 @@ export default function RootLayout() {
   const palette = usePalette();
   const isDark = useEffectiveScheme() === 'dark';
 
+  // 歌词用 MiSans（最接近苹方的开源可商用中文字体），随启动加载避免首开闪字
+  const [fontsLoaded] = useFonts({
+    'MiSans-Regular': require('../../assets/fonts/MiSans-Regular.ttf'),
+    'MiSans-Medium': require('../../assets/fonts/MiSans-Medium.ttf'),
+    'MiSans-Semibold': require('../../assets/fonts/MiSans-Semibold.ttf'),
+    'MiSans-Bold': require('../../assets/fonts/MiSans-Bold.ttf'),
+  });
+
   const navTheme = useMemo(() => {
     const base = isDark ? DarkTheme : DefaultTheme;
     return {
@@ -35,13 +44,13 @@ export default function RootLayout() {
   }, [isDark, palette]);
 
   useEffect(() => {
-    if (hydrated) {
+    if (hydrated && fontsLoaded) {
       void SplashScreen.hideAsync().catch(() => undefined);
     }
-  }, [hydrated]);
+  }, [hydrated, fontsLoaded]);
 
-  if (!hydrated) {
-    // 原生 splash 覆盖期间完成偏好读取,首帧即正确主题。
+  if (!hydrated || !fontsLoaded) {
+    // 原生 splash 覆盖期间完成偏好读取与字体加载,首帧即正确主题与字体。
     return null;
   }
 

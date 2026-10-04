@@ -1,5 +1,8 @@
-import { normalizeDurationMs } from '@/lib/format';
+import { pickStringLike, pickText, toRecords } from '@/lib/api-parse';
+import { normalizeDurationMs, stripEmTags, artistMatches } from '@/lib/format';
 import { mobileApi } from '@/lib/kugou-api';
+
+import { getPreferredQuality, type QualityId } from '@/features/settings/store';
 
 import type { PlayerTrack } from './types';
 
@@ -26,31 +29,130 @@ export class PlaybackUnavailableError extends Error {}
 export type ResolvedSongSource = {
   uri: string;
   durationMs: number;
+  /** 音源码率（bps）；非会员账号各档位可能都返回试听码率，用于跳过无意义的换源。 */
+  bitrate?: number;
+  /** 实际取链成功所用音源标识；换源兜底后可能与曲目自带 hash 不同，供上层回写。 */
+  hash?: string;
+  albumAudioId?: string;
 };
 
-/** 解析歌曲真实播放地址；无版权/需付费时抛 PlaybackUnavailableError。 */
-export async function resolveSongSource(track: PlayerTrack): Promise<ResolvedSongSource> {
-  if (track.source === 'cloud') {
-    return resolveCloudSource(track);
-  }
+type SongUrlArgs = {
+  hash: string;
+  album_id: string | number;
+  album_audio_id: string | number;
+  /** 酷狗音质标识：128 / 320 / flac；缺省为 128。 */
+  quality?: string;
+};
 
+type SongUrlOutcome = {
+  status: number;
+  urls: string[];
+  timeLength: unknown;
+  bitrate: unknown;
+};
+
+async function requestSongUrl(args: SongUrlArgs): Promise<SongUrlOutcome> {
   const response = await mobileApi.song_url({
-    hash: track.hash,
-    album_id: track.albumId ?? 0,
-    album_audio_id: track.albumAudioId ?? 0,
+    hash: args.hash,
+    album_id: args.album_id,
+    album_audio_id: args.album_audio_id,
+    quality: args.quality,
     free_part: 1,
   });
 
   const body = toRecord(response.body);
-  const status = Number(body.status ?? 0);
-  const urls = [
-    ...collectUrls(body.url),
-    ...collectUrls(body.backupUrl),
-    ...collectUrls(body.backup_url),
-  ];
+  return {
+    status: Number(body.status ?? 0),
+    urls: [
+      ...collectUrls(body.url),
+      ...collectUrls(body.backupUrl),
+      ...collectUrls(body.backup_url),
+    ],
+    timeLength: body.timeLength,
+    bitrate: body.bitrate ?? body.bitRate,
+  };
+}
 
-  if (!urls.length) {
-    if (status === 3) {
+function normalizeTitle(value: string): string {
+  return stripEmTags(value).toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * 歌单等接口下发的 hash 不一定是可播的标准音源（酷狗 /v5/url 会因此返回 status 3），
+ * 取不到链接时用“歌手 + 歌名”重新搜索，换搜索结果里的标准 FileHash 再试一次。
+ */
+async function findSearchReplacement(track: PlayerTrack): Promise<SongUrlArgs | null> {
+  const keyword = track.artist && track.artist !== '未知歌手' ? `${track.artist} ${track.title}` : track.title;
+  if (!keyword.trim()) {
+    return null;
+  }
+
+  try {
+    const response = await mobileApi.search({ keywords: keyword, page: 1, pagesize: 10, type: 'song' });
+    const records = toRecords(toRecord(toRecord(response.body).data).lists);
+    const title = normalizeTitle(track.title);
+    const candidates = records
+      .map((item) => ({
+        hash: pickText(item.FileHash),
+        title: pickText(item.OriSongName, item.SongName, item.FileName),
+        artist: pickText(item.Singername, item.SingerName),
+        albumId: pickStringLike(item.AlbumID),
+        albumAudioId: pickStringLike(item.MixSongID),
+      }))
+      .filter(
+        (item) =>
+          item.hash &&
+          normalizeTitle(item.title) === title &&
+          // 同名资源（如同名有声书）可能排在前面，按歌手过滤避免换错音源。
+          (!track.artist || track.artist === '未知歌手' || artistMatches(item.artist, track.artist))
+      );
+    if (!candidates.length) {
+      return null;
+    }
+
+    const matched =
+      (track.albumAudioId
+        ? candidates.find((item) => item.albumAudioId === track.albumAudioId)
+        : undefined) ?? candidates[0];
+    return { hash: matched.hash, album_id: matched.albumId || 0, album_audio_id: matched.albumAudioId || 0 };
+  } catch {
+    return null;
+  }
+}
+
+/** 解析歌曲真实播放地址；无版权/需付费时抛 PlaybackUnavailableError。 */
+export async function resolveSongSource(
+  track: PlayerTrack,
+  qualityOverride?: QualityId
+): Promise<ResolvedSongSource> {
+  if (track.source === 'cloud') {
+    return resolveCloudSource(track);
+  }
+
+  const quality = qualityOverride ?? getPreferredQuality();
+  const trackArgs: SongUrlArgs = {
+    hash: track.hash,
+    album_id: track.albumId ?? 0,
+    album_audio_id: track.albumAudioId ?? 0,
+  };
+  let outcome = await requestSongUrl({ ...trackArgs, quality });
+  let usedArgs = trackArgs;
+
+  if (!outcome.urls.length && quality !== '128') {
+    // 高清/无损大概率因会员限制取不到，先退回标准音质再试。
+    outcome = await requestSongUrl(trackArgs);
+  }
+
+  if (!outcome.urls.length) {
+    const replacement = await findSearchReplacement(track);
+    if (replacement) {
+      outcome = await requestSongUrl(replacement);
+      usedArgs = replacement;
+    }
+  }
+
+  if (!outcome.urls.length) {
+    if (outcome.status === 3) {
       throw new PlaybackUnavailableError('这首歌暂无版权，无法播放');
     }
 
@@ -58,8 +160,11 @@ export async function resolveSongSource(track: PlayerTrack): Promise<ResolvedSon
   }
 
   return {
-    uri: urls[0],
-    durationMs: normalizeDurationMs(body.timeLength) || track.durationMs || 0,
+    uri: outcome.urls[0],
+    bitrate: typeof outcome.bitrate === 'number' ? outcome.bitrate : undefined,
+    durationMs: normalizeDurationMs(outcome.timeLength) || track.durationMs || 0,
+    hash: usedArgs.hash,
+    albumAudioId: pickStringLike(usedArgs.album_audio_id) || undefined,
   };
 }
 

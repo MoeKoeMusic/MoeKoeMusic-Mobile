@@ -5,6 +5,11 @@ const STORAGE_KEY = 'moekoe.settings.appearance';
 export type StoredAppearance = {
   themeMode?: unknown;
   accentId?: unknown;
+  lyricAlign?: unknown;
+  lyricFontSize?: unknown;
+  lyricTranslationFontSize?: unknown;
+  quality?: unknown;
+  showLyricTranslation?: unknown;
 };
 
 export async function readStoredAppearance(): Promise<StoredAppearance | null> {
@@ -21,6 +26,11 @@ export async function readStoredAppearance(): Promise<StoredAppearance | null> {
 export async function writeStoredAppearance(value: {
   themeMode: string;
   accentId: string;
+  lyricAlign: string;
+  lyricFontSize: number;
+  lyricTranslationFontSize: number;
+  quality: string;
+  showLyricTranslation: boolean;
 }): Promise<void> {
   try {
     await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(value));

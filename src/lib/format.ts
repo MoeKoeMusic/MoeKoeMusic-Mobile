@@ -60,3 +60,14 @@ export function splitArtistTitle(value: string): { artist: string; title: string
 export function stripEmTags(value: string): string {
   return value.replace(/<\/?em>/g, '').trim();
 }
+
+/** 判断候选资源的歌手名与曲目歌手是否指向同一人（多歌手按分隔符拆开取交集）。 */
+export function artistMatches(candidateArtist: string, trackArtist: string): boolean {
+  const normalize = (value: string) => stripEmTags(value).toLowerCase().replace(/\s+/g, '');
+  const candidateSegments = candidateArtist.split(/[/,、&;；]|feat\.?/i).map(normalize).filter(Boolean);
+  const trackSegments = trackArtist.split(/[/,、&;；]|feat\.?/i).map(normalize).filter(Boolean);
+
+  return candidateSegments.some((candidate) =>
+    trackSegments.some((track) => candidate.includes(track) || track.includes(candidate))
+  );
+}

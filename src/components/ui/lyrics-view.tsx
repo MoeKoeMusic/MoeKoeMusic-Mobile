@@ -1,12 +1,19 @@
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { memo, useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
-import { ScrollView, type LayoutChangeEvent } from 'react-native';
+import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { Spinner, Text, YStack } from 'tamagui';
 
 import { findActiveLyricIndex } from '@/features/player/lyrics';
 import { usePlayerProgressSelector } from '@/features/player/store';
 import type { LyricLine, LyricsStatus } from '@/features/player/types';
+import {
+  useLyricAlign,
+  useLyricFontSize,
+  useLyricTranslationFontSize,
+  useShowLyricTranslation,
+  type LyricAlign,
+} from '@/features/settings/store';
 import { usePalette } from '@/hooks/use-palette';
 
 type LyricsViewProps = {
@@ -21,42 +28,88 @@ type LyricRowProps = {
   line: LyricLine;
   index: number;
   active: boolean;
+  align: LyricAlign;
+  fontSize: number;
+  showTranslation: boolean;
   activeColor: ComponentProps<typeof Text>['color'];
   inactiveColor: ComponentProps<typeof Text>['color'];
   onLayoutLine: (index: number, offset: number) => void;
   onSeekLine?: (line: LyricLine) => void;
 };
 
+/** 翻译行：无论所在行是否正在播放，永远为次级灰色（颜色在此处固化，不经调用方传入）。 */
+function TranslationText({
+  line,
+  align,
+  fontSize,
+}: {
+  line: LyricLine;
+  align: LyricAlign;
+  fontSize: number;
+}) {
+  const palette = usePalette();
+  if (!line.translation) {
+    return null;
+  }
+
+  return (
+    <Text
+      suppressHighlighting
+      textAlign={align === 'center' ? 'center' : 'left'}
+      color={palette.textSecondary}
+      opacity={0.85}
+      fontSize={fontSize}
+      lineHeight={Math.round(fontSize * 1.3)}
+      style={styles.translationText}>
+      {line.translation}
+    </Text>
+  );
+}
+
 const LyricRow = memo(function LyricRow({
   line,
   index,
   active,
+  align,
+  fontSize,
+  showTranslation,
   activeColor,
   inactiveColor,
   onLayoutLine,
   onSeekLine,
 }: LyricRowProps) {
+  const translationFontSize = useLyricTranslationFontSize();
   return (
-    <Text
+    <View
       onLayout={(event) => onLayoutLine(index, event.nativeEvent.layout.y)}
-      onPress={onSeekLine ? () => onSeekLine(line) : undefined}
-      suppressHighlighting
-      textAlign="center"
-      paddingVertical={11}
-      color={active ? activeColor : inactiveColor}
-      opacity={active ? 1 : 0.58}
-      fontSize={16}
-      lineHeight={25}
-      fontWeight={active ? '700' : '500'}
-      transform={[{ scale: active ? 1.08 : 1 }]}
-      transition="quick">
-      {line.text}
-    </Text>
+      style={styles.row}>
+      <Text
+        onPress={onSeekLine ? () => onSeekLine(line) : undefined}
+        suppressHighlighting
+        textAlign={align === 'center' ? 'center' : 'left'}
+        color={active ? activeColor : inactiveColor}
+        opacity={active ? 1 : 0.45}
+        fontSize={fontSize}
+        lineHeight={Math.round(fontSize * 1.36)}
+        style={styles.lineText}>
+        {line.text}
+      </Text>
+      {showTranslation ? (
+        <TranslationText
+          line={line}
+          align={align}
+          fontSize={translationFontSize}
+        />
+      ) : null}
+    </View>
   );
 });
 
 export function LyricsView({ lines, status, onSeekLine }: LyricsViewProps) {
   const palette = usePalette();
+  const lyricAlign = useLyricAlign();
+  const lyricFontSize = useLyricFontSize();
+  const showTranslation = useShowLyricTranslation();
   const scrollRef = useRef<ScrollView>(null);
   const lineOffsets = useRef<number[]>([]);
   const userScrollUntil = useRef(0);
@@ -114,6 +167,8 @@ export function LyricsView({ lines, status, onSeekLine }: LyricsViewProps) {
   }
 
   return (
+    // alpha 遮罩让歌词本身在上下边缘淡出，透出后面的动态取色背景，
+    // 因此不能用任何实色渐变条（背景色会与封面取色背景冲突）
     <MaskedView
       style={{ flex: 1 }}
       androidRenderingMode="hardware"
@@ -142,7 +197,10 @@ export function LyricsView({ lines, status, onSeekLine }: LyricsViewProps) {
             line={line}
             index={index}
             active={index === activeIndex}
-            activeColor={palette.accent}
+            align={lyricAlign}
+            fontSize={lyricFontSize}
+            showTranslation={showTranslation}
+            activeColor={palette.text}
             inactiveColor={palette.textSecondary}
             onLayoutLine={handleLayoutLine}
             onSeekLine={onSeekLine}
@@ -152,3 +210,18 @@ export function LyricsView({ lines, status, onSeekLine }: LyricsViewProps) {
     </MaskedView>
   );
 }
+
+const styles = StyleSheet.create({
+  row: {
+    paddingVertical: 13,
+  },
+  lineText: {
+    includeFontPadding: false,
+    fontFamily: 'MiSans-Bold',
+  },
+  translationText: {
+    includeFontPadding: false,
+    marginTop: 5,
+    fontFamily: 'MiSans-Medium',
+  },
+});

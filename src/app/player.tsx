@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -11,27 +12,31 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Slider, Spinner, Text, View, XStack, YStack } from 'tamagui';
+import { Sheet, Slider, Spinner, Text, View, XStack, YStack } from 'tamagui';
 
 import { Artwork } from '@/components/ui/artwork';
 import { LyricsView } from '@/components/ui/lyrics-view';
 import { QueueSheet } from '@/components/ui/queue-sheet';
+import { OptionsSheet, LyricSettingsSheet } from '@/components/ui/option-sheet';
 import { showToast, ToastHost } from '@/components/ui/toast';
 import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
+import { findArtistByName } from '@/features/artist/artist-api';
 import { libraryActions, useIsLiked } from '@/features/library/store';
 import { playerActions, usePlayer, usePlayerProgress } from '@/features/player/store';
 import type { PlayMode } from '@/features/player/types';
+import {
+  settingsActions,
+  useLyricAlign,
+  useLyricFontSize,
+  useQuality,
+  type LyricAlign,
+  type LyricFontSize,
+  type QualityId,
+} from '@/features/settings/store';
 import { useIsDark, usePalette } from '@/hooks/use-palette';
-import { formatClock } from '@/lib/format';
+import { extractAmbientColor, mixHex, withAlpha } from '@/lib/ambient-color';
+import { formatClock, sizedImage } from '@/lib/format';
 import { shareTrack } from '@/lib/share';
 
 const MODE_ICON: Record<PlayMode, 'repeat' | 'repeat-once' | 'shuffle-variant'> = {
@@ -40,52 +45,62 @@ const MODE_ICON: Record<PlayMode, 'repeat' | 'repeat-once' | 'shuffle-variant'> 
   single: 'repeat-once',
 };
 
-function SpinningDisc({ coverUrl, playing, size }: { coverUrl: string | null; playing: boolean; size: number }) {
+const QUALITY_BADGE: Record<QualityId, string> = {
+  '128': '标',
+  '320': 'HQ',
+  flac: 'SQ',
+};
+
+const QUALITY_OPTIONS: { value: QualityId; label: string; hint: string }[] = [
+  { value: '128', label: '标准音质', hint: '流畅，适合在线播放' },
+  { value: '320', label: '高清音质', hint: '320Kbps' },
+  { value: 'flac', label: '无损音质', hint: '需要酷狗会员，取不到时自动回退' },
+];
+
+const LYRIC_ALIGN_OPTIONS: { value: LyricAlign; label: string }[] = [
+  { value: 'center', label: '居中对齐' },
+  { value: 'left', label: '左对齐' },
+];
+
+const LYRIC_FONT_OPTIONS: { value: LyricFontSize; label: string }[] = [
+  { value: 18, label: '小' },
+  { value: 22, label: '标准' },
+  { value: 26, label: '大' },
+];
+
+/** 封面大圆角卡片：暂停时轻微缩小，不降透明度（透明度会让背景色透进来显得发灰）。 */
+function ArtworkCard({ coverUrl, playing, size }: { coverUrl: string | null; playing: boolean; size: number }) {
   const isDark = useIsDark();
-  const rotation = useSharedValue(0);
-
-  useEffect(() => {
-    if (playing) {
-      rotation.value = withRepeat(
-        withTiming(rotation.value + 360, { duration: 24000, easing: Easing.linear }),
-        -1,
-        false
-      );
-    } else {
-      cancelAnimation(rotation);
-    }
-  }, [playing, rotation]);
-
-  const spinStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value % 360}deg` }],
-  }));
 
   return (
-    <YStack
+    <View
       width={size}
       height={size}
-      borderRadius={size / 2}
-      alignItems="center"
-      justifyContent="center"
-      backgroundColor={isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.75)'}
+      borderRadius={26}
+      overflow="hidden"
+      transform={[{ scale: playing ? 1 : 0.965 }]}
+      transition="quick"
       shadowColor="#000000"
-      shadowOffset={{ width: 0, height: 18 }}
-      shadowOpacity={isDark ? 0.5 : 0.18}
-      shadowRadius={30}
-      elevation={16}>
-      <Animated.View style={spinStyle}>
-        <Artwork uri={coverUrl} size={size - 26} circle />
-      </Animated.View>
-    </YStack>
+      shadowOffset={{ width: 0, height: 20 }}
+      shadowOpacity={isDark ? 0.55 : 0.22}
+      shadowRadius={36}
+      style={{ elevation: 18 }}>
+      <Artwork uri={coverUrl} size={size} radius={26} />
+    </View>
   );
 }
 
 function PlaybackProgress() {
   const palette = usePalette();
+  const isDark = useIsDark();
   const { positionMs, durationMs } = usePlayerProgress();
   const [dragValue, setDragValue] = useState<number | null>(null);
   const dragValueRef = useRef<number | null>(null);
   const shownPosition = dragValue ?? positionMs;
+  // 进度条用跟随深浅色的中性色，不用主题色：封面主色背景什么颜色都可能有，
+  // 主题色（如苹果红）撞上绿/蓝封面会很突兀
+  const fill = palette.text;
+  const track = isDark ? 'rgba(255, 255, 255, 0.28)' : 'rgba(0, 0, 0, 0.16)';
 
   return (
     <YStack gap={7}>
@@ -107,22 +122,22 @@ function PlaybackProgress() {
           dragValueRef.current = null;
           setTimeout(() => setDragValue(null), 180);
         }}>
-        <Slider.Track backgroundColor={palette.cardAlt} height={4} borderRadius={999}>
-          <Slider.TrackActive backgroundColor={palette.accent} />
+        <Slider.Track backgroundColor={track} height={4} borderRadius={999}>
+          <Slider.TrackActive backgroundColor={fill} />
         </Slider.Track>
         <Slider.Thumb
           index={0}
           size={16}
           circular
-          backgroundColor={palette.accent}
+          backgroundColor={fill}
           borderWidth={2.5}
           borderColor="#FFFFFF"
           pressStyle={{
             scale: 1.2,
-            backgroundColor: palette.accentPressed,
+            backgroundColor: fill,
             borderColor: '#FFFFFF',
           }}
-          hoverStyle={{ backgroundColor: palette.accent, borderColor: '#FFFFFF' }}
+          hoverStyle={{ backgroundColor: fill, borderColor: '#FFFFFF' }}
           shadowColor="#000000"
           shadowOpacity={0.2}
           shadowRadius={5}
@@ -143,20 +158,71 @@ function PlaybackProgress() {
 
 export default function PlayerScreen() {
   const palette = usePalette();
+  const isDark = useIsDark();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const player = usePlayer();
 
   const [pageIndex, setPageIndex] = useState(0);
+  const [ambientByHash, setAmbientByHash] = useState<{ hash: string; color: string | null } | null>(null);
   const [queueOpen, setQueueOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [likeBusy, setLikeBusy] = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(false);
+  const [lyricSettingsOpen, setLyricSettingsOpen] = useState(false);
+  const quality = useQuality();
+  const [artistBusy, setArtistBusy] = useState(false);
   const [lyricsMounted, setLyricsMounted] = useState(false);
   const pagerRef = useRef<ScrollView>(null);
 
   const { track, playing, loading, buffering, mode, error, lyrics, lyricsStatus } = player;
   const liked = useIsLiked(track?.hash);
+  const trackHash = track?.hash ?? null;
+  const coverUrl = track?.coverUrl ?? null;
+  /** 当前这首的封面主色；取色完成前（或取不到时）为 null。 */
+  const ambient = ambientByHash && ambientByHash.hash === trackHash ? ambientByHash.color : null;
+
+  /** 播放页只有歌手名没有 id：先按名字搜出歌手再跳主页。 */
+  function openArtistPage() {
+    if (!track || artistBusy) {
+      return;
+    }
+
+    setArtistBusy(true);
+    findArtistByName(track.artist || '未知歌手')
+      .then((artist) => {
+        if (artist) {
+          router.push({
+            pathname: '/artist/[id]',
+            params: { id: artist.id, name: artist.name, avatar: artist.avatarUrl ?? '' },
+          });
+        } else {
+          showToast('没有找到这位歌手的主页');
+        }
+      })
+      .catch(() => showToast('歌手主页打开失败，请稍后再试'))
+      .finally(() => setArtistBusy(false));
+  }
+
+  useEffect(() => {
+    // 换歌时按小尺寸封面重新取主色，失败保持中性配色
+    if (!trackHash) {
+      return;
+    }
+    let alive = true;
+    const small = sizedImage(coverUrl, 240) ?? coverUrl;
+    if (small) {
+      extractAmbientColor(small).then((color) => {
+        if (alive) {
+          setAmbientByHash({ hash: trackHash, color });
+        }
+      });
+    }
+    return () => {
+      alive = false;
+    };
+  }, [trackHash, coverUrl]);
 
   useEffect(() => {
     // 提前加载歌单库,让心形按钮反映真实喜欢状态
@@ -199,8 +265,17 @@ export default function PlayerScreen() {
   }
 
   const compact = height < 700;
-  const discSize = Math.min(width - 104, compact ? 236 : 300);
+  const artworkSize = Math.min(width - 72, compact ? 250 : 320);
   const busy = loading || buffering;
+
+  // 背景由封面主色驱动：取不到色（灰白封面/非 JPEG）时用中性灰兜底
+  const tint = ambient ?? (isDark ? '#8A8FA3' : '#B9BECC');
+  const scrimTop = isDark
+    ? withAlpha(mixHex(tint, '#000000', 0.45), 0.5)
+    : withAlpha('#FFFFFF', 0.55);
+  const scrimBottom = isDark
+    ? withAlpha(mixHex(tint, '#0E0F16', 0.78), 0.94)
+    : withAlpha(mixHex(tint, '#FFFFFF', 0.78), 0.92);
 
   function handlePagerScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
     const nextIndex = Math.round(event.nativeEvent.contentOffset.x / width);
@@ -244,8 +319,20 @@ export default function PlayerScreen() {
 
   return (
     <View flex={1} backgroundColor={palette.playerBottom}>
+      {/* Apple Music 式背景：封面大图高斯模糊 + 按封面主色取的轻遮罩，
+          顶部多透出封面色、底部收进主题色保证控件可读 */}
+      {track.coverUrl ? (
+        <Image
+          source={{ uri: sizedImage(track.coverUrl, 480) ?? track.coverUrl }}
+          style={StyleSheet.absoluteFill}
+          blurRadius={50}
+          contentFit="cover"
+          transition={400}
+        />
+      ) : null}
       <LinearGradient
-        colors={[palette.playerTop, palette.playerBottom]}
+        colors={[scrimTop, scrimBottom]}
+        locations={[0, 0.55]}
         style={StyleSheet.absoluteFill}
       />
 
@@ -281,7 +368,21 @@ export default function PlayerScreen() {
               ))}
             </XStack>
           </YStack>
-          <View width={40} height={40} />
+          {pageIndex === 1 ? (
+            <XStack
+              width={40}
+              height={40}
+              borderRadius={20}
+              alignItems="center"
+              justifyContent="center"
+              transition="quickest"
+              pressStyle={{ opacity: 0.6, scale: 0.92 }}
+              onPress={() => setLyricSettingsOpen(true)}>
+              <Ionicons name="options-outline" size={21} color={palette.textSecondary} />
+            </XStack>
+          ) : (
+            <View width={40} height={40} />
+          )}
         </XStack>
 
         {/* 封面 / 歌词 双页 */}
@@ -292,19 +393,25 @@ export default function PlayerScreen() {
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={handlePagerScroll}
           style={{ flex: 1 }}>
-          <YStack width={width} alignItems="center" justifyContent="center" gap={compact ? 20 : 30}>
-            <SpinningDisc coverUrl={track.coverUrl} playing={playing} size={discSize} />
+          <YStack width={width} alignItems="center" justifyContent="center" gap={compact ? 22 : 34}>
+            <ArtworkCard coverUrl={track.coverUrl} playing={playing} size={artworkSize} />
 
             <YStack alignItems="center" gap={7} paddingHorizontal={40} maxWidth={560}>
               <Text
                 color={palette.text}
-                fontSize={compact ? 19 : 22}
+                fontSize={compact ? 20 : 23}
                 fontWeight="800"
                 textAlign="center"
                 numberOfLines={1}>
                 {track.title}
               </Text>
-              <Text color={palette.textSecondary} fontSize={14} numberOfLines={1}>
+              <Text
+                color={palette.textSecondary}
+                fontSize={15}
+                numberOfLines={1}
+                transition="quickest"
+                pressStyle={{ opacity: 0.6 }}
+                onPress={openArtistPage}>
                 {track.artist || '未知歌手'}
               </Text>
               {error ? (
@@ -325,7 +432,7 @@ export default function PlayerScreen() {
             </YStack>
           </YStack>
 
-          <YStack width={width} paddingTop={8}>
+          <YStack width={width} paddingTop={8} position="relative">
             {lyricsMounted ? (
               <LyricsView
                 lines={lyrics}
@@ -371,6 +478,31 @@ export default function PlayerScreen() {
               justifyContent="center"
               transition="quickest"
               pressStyle={{ opacity: 0.55, scale: 0.88 }}
+              onPress={() => setQualityOpen(true)}>
+              <View
+                width={30}
+                height={22}
+                borderRadius={6}
+                borderWidth={1.5}
+                borderColor={quality === 'flac' ? palette.accent : palette.textSecondary}
+                alignItems="center"
+                justifyContent="center">
+                <Text
+                  fontSize={9.5}
+                  fontWeight="800"
+                  letterSpacing={0.5}
+                  color={quality === 'flac' ? palette.accent : palette.textSecondary}>
+                  {QUALITY_BADGE[quality]}
+                </Text>
+              </View>
+            </XStack>
+            <XStack
+              width={40}
+              height={40}
+              alignItems="center"
+              justifyContent="center"
+              transition="quickest"
+              pressStyle={{ opacity: 0.55, scale: 0.88 }}
               onPress={() => {
                 if (track) {
                   void shareTrack(track);
@@ -382,10 +514,10 @@ export default function PlayerScreen() {
 
           <PlaybackProgress />
 
-          <XStack alignItems="center" justifyContent="space-between">
+          <XStack alignItems="center" justifyContent="space-between" paddingHorizontal={8}>
             <XStack
-              width={42}
-              height={42}
+              width={44}
+              height={44}
               alignItems="center"
               justifyContent="center"
               transition="quickest"
@@ -395,70 +527,77 @@ export default function PlayerScreen() {
             </XStack>
 
             <XStack
-              width={52}
-              height={52}
+              width={56}
+              height={56}
               alignItems="center"
               justifyContent="center"
               transition="quickest"
               pressStyle={{ opacity: 0.55, scale: 0.88 }}
               onPress={() => playerActions.previous()}>
-              <Ionicons name="play-skip-back" size={28} color={palette.text} />
+              <Ionicons name="play-skip-back" size={32} color={palette.text} />
             </XStack>
 
             <XStack
-              width={74}
-              height={74}
-              borderRadius={37}
-              overflow="hidden"
+              width={72}
+              height={72}
               alignItems="center"
               justifyContent="center"
               transition="quickest"
-              pressStyle={{ scale: 0.94, opacity: 0.9 }}
+              pressStyle={{ scale: 0.9, opacity: 0.75 }}
               onPress={() => playerActions.toggle()}>
-              <LinearGradient
-                colors={[palette.gradientStart, palette.gradientEnd]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
               {busy ? (
-                <Spinner size="small" color="#FFFFFF" />
+                <Spinner size="large" color={palette.text} />
               ) : (
                 <Ionicons
                   name={playing ? 'pause' : 'play'}
-                  size={30}
-                  color="#FFFFFF"
-                  style={playing ? undefined : { marginLeft: 3 }}
+                  size={40}
+                  color={palette.text}
+                  style={playing ? undefined : { marginLeft: 4 }}
                 />
               )}
             </XStack>
 
             <XStack
-              width={52}
-              height={52}
+              width={56}
+              height={56}
               alignItems="center"
               justifyContent="center"
               transition="quickest"
               pressStyle={{ opacity: 0.55, scale: 0.88 }}
               onPress={() => playerActions.next()}>
-              <Ionicons name="play-skip-forward" size={28} color={palette.text} />
+              <Ionicons name="play-skip-forward" size={32} color={palette.text} />
             </XStack>
 
             <XStack
-              width={42}
-              height={42}
+              width={44}
+              height={44}
               alignItems="center"
               justifyContent="center"
               transition="quickest"
               pressStyle={{ opacity: 0.55, scale: 0.9 }}
               onPress={() => setQueueOpen(true)}>
-              <MaterialCommunityIcons name="playlist-music" size={24} color={palette.textSecondary} />
+              <MaterialCommunityIcons name="playlist-music" size={22} color={palette.textSecondary} />
             </XStack>
           </XStack>
         </YStack>
       </YStack>
 
       <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+      <OptionsSheet
+        open={qualityOpen}
+        onOpenChange={setQualityOpen}
+        title="播放音质"
+        options={QUALITY_OPTIONS}
+        value={quality}
+        onSelect={(next) => {
+          void playerActions.applyQuality(next);
+          showToast(next === 'flac' ? '已选无损音质，取不到时会自动回退' : '音质已切换');
+        }}
+      />
+      <LyricSettingsSheet
+        open={lyricSettingsOpen}
+        onOpenChange={setLyricSettingsOpen}
+      />
       <TrackActionsSheet
         open={actionsOpen}
         onOpenChange={setActionsOpen}
