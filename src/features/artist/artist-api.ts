@@ -1,6 +1,6 @@
 import type { PlayerTrack } from '@/features/player/types';
 import { pickNumber, pickStringLike, pickText, toRecord, toRecords } from '@/lib/api-parse';
-import { normalizeDurationMs, sizedImage } from '@/lib/format';
+import { normalizeDurationMs, sizedImage, stripEmTags } from '@/lib/format';
 import { mobileApi, bootstrapMobileApi } from '@/lib/kugou-api';
 
 export type ArtistInfo = {
@@ -91,4 +91,36 @@ export async function fetchArtistSongs(
     total,
     hasMore: rawSongs.length >= ARTIST_PAGE_SIZE,
   };
+}
+
+export type FoundArtist = {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+};
+
+/**
+ * 播放页等只有歌手名、没有歌手 id 的场景：按名字搜索歌手，
+ * 只取名字完全一致的第一条，避免同名/相关歌手误跳。
+ */
+export async function findArtistByName(name: string): Promise<FoundArtist | null> {
+  const keyword = stripEmTags(name).trim();
+  if (!keyword || keyword === '未知歌手') {
+    return null;
+  }
+
+  await bootstrapMobileApi();
+  const response = await mobileApi.search({ keywords: keyword, page: 1, pagesize: 10, type: 'author' });
+  const lists = toRecords(toRecord(toRecord(response.body).data).lists);
+  const wanted = keyword.toLowerCase().replace(/\s+/g, ' ');
+
+  for (const item of lists) {
+    const id = pickStringLike(item.SingerId, item.AuthorId);
+    const singerName = stripEmTags(pickText(item.SingerName, item.AuthorName));
+    if (id && singerName && singerName.toLowerCase().replace(/\s+/g, ' ') === wanted) {
+      return { id, name: singerName, avatarUrl: sizedImage(pickText(item.Avatar, item.Image), 240) };
+    }
+  }
+
+  return null;
 }

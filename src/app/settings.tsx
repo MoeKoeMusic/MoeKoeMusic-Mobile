@@ -12,7 +12,15 @@ import { ACCENT_PRESETS, getPalette, type AccentPreset } from '@/constants/accen
 import { MaxContentWidth, type SchemeName } from '@/constants/theme';
 import { isLoggedIn } from '@/features/account/user-api';
 import { libraryActions } from '@/features/library/store';
-import { settingsActions, useSettings, type ThemeMode } from '@/features/settings/store';
+import { playerActions } from '@/features/player/store';
+import {
+  settingsActions,
+  useSettings,
+  type LyricAlign,
+  type LyricFontSize,
+  type QualityId,
+  type ThemeMode,
+} from '@/features/settings/store';
 import { useEffectiveScheme, usePalette } from '@/hooks/use-palette';
 import { clearApiSession } from '@/lib/kugou-api';
 
@@ -21,6 +29,23 @@ const THEME_MODE_OPTIONS = [
   { value: 'light', label: '浅色' },
   { value: 'dark', label: '深色' },
 ] as const satisfies readonly { value: ThemeMode; label: string }[];
+
+const LYRIC_ALIGN_OPTIONS = [
+  { value: 'center', label: '居中对齐' },
+  { value: 'left', label: '左对齐' },
+] as const satisfies readonly { value: LyricAlign; label: string }[];
+
+const LYRIC_FONT_OPTIONS = [
+  { value: '18', label: '小' },
+  { value: '22', label: '标准' },
+  { value: '26', label: '大' },
+] as const satisfies readonly { value: string; label: string }[];
+
+const QUALITY_OPTIONS = [
+  { value: '128', label: '标准' },
+  { value: '320', label: '高清' },
+  { value: 'flac', label: '无损' },
+] as const satisfies readonly { value: QualityId; label: string }[];
 
 const REPO_URL = 'https://github.com/MoeKoeMusic/MoeKoeMusic-Mobile';
 const WEBSITE_URL = 'https://music.moekoe.cn';
@@ -135,7 +160,7 @@ export default function SettingsScreen() {
   const scheme = useEffectiveScheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { themeMode, accentId } = useSettings();
+  const { themeMode, accentId, lyricAlign, lyricFontSize, quality } = useSettings();
   const [loggedIn, setLoggedIn] = useState(() => isLoggedIn());
   const [aboutVisible, setAboutVisible] = useState(false);
   const version = Constants.expoConfig?.version ?? '';
@@ -228,6 +253,55 @@ export default function SettingsScreen() {
                     />
                   ))}
                 </XStack>
+              </YStack>
+            </YStack>
+          </YStack>
+
+          <YStack gap={10}>
+            <SectionHeader title="播放与歌词" />
+            <YStack
+              backgroundColor={palette.card}
+              borderRadius={20}
+              borderWidth={StyleSheet.hairlineWidth}
+              borderColor={palette.border}
+              padding={14}
+              gap={14}>
+              <YStack gap={10}>
+                <Text color={palette.textSecondary} fontSize={13} fontWeight="600">
+                  播放音质
+                </Text>
+                <SegmentedControl
+                  options={QUALITY_OPTIONS}
+                  value={quality}
+                  onChange={(next) => void playerActions.applyQuality(next as QualityId)}
+                />
+                {quality === 'flac' ? (
+                  <Text color={palette.textTertiary} fontSize={11}>
+                    无损音质需要酷狗会员，取不到时会自动回退到较低音质
+                  </Text>
+                ) : null}
+              </YStack>
+              <View height={StyleSheet.hairlineWidth} backgroundColor={palette.border} />
+              <YStack gap={10}>
+                <Text color={palette.textSecondary} fontSize={13} fontWeight="600">
+                  歌词对齐
+                </Text>
+                <SegmentedControl
+                  options={LYRIC_ALIGN_OPTIONS}
+                  value={lyricAlign}
+                  onChange={settingsActions.setLyricAlign}
+                />
+              </YStack>
+              <View height={StyleSheet.hairlineWidth} backgroundColor={palette.border} />
+              <YStack gap={10}>
+                <Text color={palette.textSecondary} fontSize={13} fontWeight="600">
+                  歌词字号
+                </Text>
+                <SegmentedControl
+                  options={LYRIC_FONT_OPTIONS}
+                  value={String(lyricFontSize)}
+                  onChange={(next) => settingsActions.setLyricFontSize(Number(next) as LyricFontSize)}
+                />
               </YStack>
             </YStack>
           </YStack>

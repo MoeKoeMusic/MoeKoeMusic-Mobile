@@ -203,9 +203,9 @@ export default function MeScreen() {
   });
   const [createOpen, setCreateOpen] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
-  // 创建的歌单默认展开，收藏的歌单默认收起
+  // 创建的歌单与收藏的歌单都默认展开
   const [createdOpen, setCreatedOpen] = useState(true);
-  const [collectedOpen, setCollectedOpen] = useState(false);
+  const [collectedOpen, setCollectedOpen] = useState(true);
   const library = useLibrary();
 
   const handleUpgrade = useCallback(async () => {
