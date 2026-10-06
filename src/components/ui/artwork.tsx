@@ -2,7 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, View } from 'react-native';
+import { useState } from 'react';
 
+import { useAnimationsEnabled } from '@/features/settings/store';
 import { usePalette } from '@/hooks/use-palette';
 
 type ArtworkProps = {
@@ -15,11 +17,24 @@ type ArtworkProps = {
 
 export function Artwork({ uri, size, radius = 14, circle = false }: ArtworkProps) {
   const palette = usePalette();
+  const animationsEnabled = useAnimationsEnabled();
+  // 加载失败时先强制重新请求一次（CDN 偶发失败在弱网下不少见），
+  // 再失败就回退到占位渐变，避免一直露着灰底。
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
+  // uri 变化（切歌）时复位重试状态
+  const [lastUri, setLastUri] = useState(uri);
+  if (uri !== lastUri) {
+    setLastUri(uri);
+    setAttempt(0);
+    setFailed(false);
+  }
+
   const frameStyle = size
     ? { width: size, height: size, borderRadius: circle ? size / 2 : radius }
     : { width: '100%' as const, aspectRatio: 1, borderRadius: radius };
 
-  if (!uri) {
+  if (!uri || failed) {
     const iconSize = size ? Math.max(16, Math.round(size * 0.38)) : 34;
     return (
       <LinearGradient
@@ -32,9 +47,27 @@ export function Artwork({ uri, size, radius = 14, circle = false }: ArtworkProps
     );
   }
 
+  const source =
+    attempt > 0
+      ? { uri: `${uri}${uri.includes('?') ? '&' : '?'}retry=${attempt}` }
+      : { uri };
+
   return (
     <View style={[styles.frame, frameStyle, { backgroundColor: palette.cardAlt }]}>
-      <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+      <Image
+        source={source}
+        recyclingKey={uri}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        transition={animationsEnabled ? 200 : 0}
+        onError={() => {
+          if (attempt < 1) {
+            setAttempt(attempt + 1);
+          } else {
+            setFailed(true);
+          }
+        }}
+      />
     </View>
   );
 }

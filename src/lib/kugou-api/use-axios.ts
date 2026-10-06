@@ -62,6 +62,31 @@ function compactBody(body: unknown): string {
   }
 }
 
+/**
+ * RN 网络层没有默认超时，axios 侧也没配：请求一旦挂住，取播放地址的
+ * loading 会永远停在 true，播放键被拦死（切几首歌后无法继续播放的根因）。
+ * 这里在 app 层统一兜底，不依赖 api 子模块的配置。
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('请求超时，请稍后重试'));
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 export const createMobileRequest: UseAxios = async (options) => {
   // login.user.kugou.com 仅支持 HTTP（无有效 TLS），不要重写为 https；
   // 明文流量已通过 app.json 的 usesCleartextTraffic / NSAllowsArbitraryLoads 放行。
@@ -73,7 +98,7 @@ export const createMobileRequest: UseAxios = async (options) => {
   }
 
   try {
-    const result = await createRequest(options);
+    const result = await withTimeout(createRequest(options));
 
     if (__DEV__) {
       console.log(

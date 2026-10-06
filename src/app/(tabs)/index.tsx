@@ -131,7 +131,7 @@ export default function HomeScreen() {
   const [actionTrack, setActionTrack] = useState<PlayerTrack | null>(null);
 
   const contentWidth = Math.min(width, MaxContentWidth) - 32;
-  const playlistColumns = contentWidth >= WideBreakpoint ? 3 : 2;
+  const playlistColumns = contentWidth >= 880 ? 4 : contentWidth >= WideBreakpoint ? 3 : 2;
   const playlistCardWidth = Math.floor(
     (contentWidth - 14 * (playlistColumns - 1)) / playlistColumns
   );

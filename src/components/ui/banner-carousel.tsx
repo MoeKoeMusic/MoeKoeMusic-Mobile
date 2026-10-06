@@ -10,6 +10,7 @@ import {
 import { View } from 'tamagui';
 
 import type { HomeBanner } from '@/features/home/load-home-data';
+import { useAnimationsEnabled } from '@/features/settings/store';
 import { usePalette } from '@/hooks/use-palette';
 
 const AUTO_SCROLL_INTERVAL_MS = 4200;
@@ -35,6 +36,7 @@ export function BannerCarousel({
   onPressBanner,
 }: BannerCarouselProps) {
   const palette = usePalette();
+  const animationsEnabled = useAnimationsEnabled();
   const scrollRef = useRef<ScrollView>(null);
   const offsetRef = useRef(0);
   const interactingRef = useRef(false);
@@ -79,7 +81,8 @@ export function BannerCarousel({
 
   useFocusEffect(
     useCallback(() => {
-      if (!looping) {
+      // 关闭动画时不自动轮播，省电且避免非动画模式下的频繁滚动
+      if (!looping || !animationsEnabled) {
         return;
       }
 
@@ -105,7 +108,7 @@ export function BannerCarousel({
       }, AUTO_SCROLL_INTERVAL_MS);
 
       return () => clearInterval(timer);
-    }, [looping, realCount, step])
+    }, [looping, realCount, step, animationsEnabled])
   );
 
   return (
@@ -150,7 +153,7 @@ export function BannerCarousel({
               source={banner.imageUrl ?? undefined}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
-              transition={220}
+              transition={animationsEnabled ? 220 : 0}
             />
           </View>
         );

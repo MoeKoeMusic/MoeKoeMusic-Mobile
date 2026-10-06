@@ -10,6 +10,8 @@ import { useSyncExternalStore } from 'react';
 
 import { sizedImage } from '@/lib/format';
 
+import { settingsActions, type QualityId } from '@/features/settings/store';
+
 import { loadLyricLines } from './lyrics';
 import { resolveSongSource } from './song-url';
 import type { LyricLine, LyricsStatus, PlayMode, PlayerTrack } from './types';
@@ -30,6 +32,10 @@ export type PlayerState = {
 export type ProgressState = {
   positionMs: number;
   durationMs: number;
+  /** 是否在播放中；歌词逐字动画用它判断是否在 tick 之间外推位置。 */
+  playing: boolean;
+  /** 最近一次 positionMs 更新的本地时间戳；逐字动画用它做帧间线性插值。 */
+  positionUpdatedAt: number;
 };
 
 const INITIAL_PLAYER_STATE: PlayerState = {
@@ -48,6 +54,8 @@ const INITIAL_PLAYER_STATE: PlayerState = {
 const INITIAL_PROGRESS_STATE: ProgressState = {
   positionMs: 0,
   durationMs: 0,
+  playing: false,
+  positionUpdatedAt: 0,
 };
 
 function createStore<T extends object>(initial: T) {
@@ -90,6 +98,13 @@ const progressStore = createStore(INITIAL_PROGRESS_STATE);
 let audioPlayer: AudioPlayer | null = null;
 let loadSequence = 0;
 let failStreak = 0;
+/** 本次 loading 开始的时间；超过阈值仍 loading 视为取链挂死，播放键允许强制重试。 */
+let loadingSince = 0;
+const STALE_LOADING_MS = 12_000;
+/** 当前 player 里装载的音源地址；切音质时用它判断是否真的换了源。 */
+let currentSourceUri: string | null = null;
+/** 当前音源码率（bps）；非会员各档位可能都返回试听码率，用于跳过无效换源。 */
+let currentBitrate: number | null = null;
 let advanceTimer: ReturnType<typeof setTimeout> | null = null;
 // 每次“建立新队列”都会自增；后台补齐歌单剩余曲目时靠它判断队列是否已被替换。
 let queueGeneration = 0;
@@ -100,6 +115,9 @@ const LOCK_SCREEN_OPTIONS: AudioLockScreenOptions = {
   showSeekForward: true,
   showSeekBackward: true,
 };
+
+/** 原生侧音源加载/解码失败时给用户的统一文案（详情只进日志，不打扰用户）。 */
+const SOURCE_FAILED_MESSAGE = '播放源已失效，点此重试';
 
 function lockScreenMetadataFor(track: PlayerTrack): AudioMetadata {
   return {
@@ -115,7 +133,7 @@ function ensureAudioPlayer(): AudioPlayer {
     return audioPlayer;
   }
 
-  audioPlayer = createAudioPlayer(null, { updateInterval: 500 });
+  audioPlayer = createAudioPlayer(null, { updateInterval: 100 });
   audioPlayer.addListener('playbackStatusUpdate', handlePlaybackStatus);
   void setAudioModeAsync({
     playsInSilentMode: true,
@@ -128,16 +146,30 @@ function ensureAudioPlayer(): AudioPlayer {
 
 function handlePlaybackStatus(status: AudioStatus) {
   const current = progressStore.getState();
+  const playing = status.playing;
   progressStore.setState({
     positionMs: Math.max(0, Math.round(status.currentTime * 1000)),
     durationMs: status.duration > 0 ? Math.round(status.duration * 1000) : current.durationMs,
+    playing,
+    positionUpdatedAt: Date.now(),
   });
 
   const state = playerStore.getState();
-  const playing = status.playing;
   const buffering = status.isBuffering && !status.playing;
   if (state.playing !== playing || state.buffering !== buffering) {
     playerStore.setState({ playing, buffering });
+  }
+
+  // 音源失效（URL 过期 / CDN 拒绝 / 解码失败）唯一的暴露渠道是 status.error。
+  // 漏掉它状态机会停在 playing=false + error=''：UI 显示暂停态，播放键只对死源反复 play()。
+  if (status.error && !state.loading && !state.error) {
+    if (__DEV__) {
+      console.warn('[player] source playback failed:', status.error);
+    }
+    playerStore.setState({ error: SOURCE_FAILED_MESSAGE });
+  } else if (!status.error && state.error === SOURCE_FAILED_MESSAGE) {
+    // expo-audio 在新源装载或恢复播放后会自动清除 error，提示同步撤回
+    playerStore.setState({ error: '' });
   }
 
   if (status.didJustFinish) {
@@ -188,15 +220,18 @@ async function loadTrackAt(index: number, options?: { autoplay?: boolean }) {
   }
 
   const sequence = ++loadSequence;
+  loadingSince = Date.now();
   playerStore.setState({
     index,
     track,
     loading: true,
     error: '',
     lyrics: [],
-    lyricsStatus: 'idle',
+    // 换曲即刻后台预取歌词，与取播放地址并行；打开播放页时大概率已就绪
+    lyricsStatus: 'loading',
   });
-  progressStore.setState({ positionMs: 0, durationMs: track.durationMs ?? 0 });
+  progressStore.setState({ positionMs: 0, durationMs: track.durationMs ?? 0, positionUpdatedAt: Date.now() });
+  loadLyricsFor(track, sequence);
 
   try {
     const source = await resolveSongSource(track);
@@ -204,16 +239,39 @@ async function loadTrackAt(index: number, options?: { autoplay?: boolean }) {
       return;
     }
 
+    // 取链兜底换过音源时（歌单下发的 hash 不标准），把实际音源标识回写到曲目，
+    // 歌词、锁屏等后续流程都以换源后的 hash 为准。
+    let effectiveTrack = track;
+    if (source.hash && source.hash !== track.hash) {
+      effectiveTrack = {
+        ...track,
+        hash: source.hash,
+        albumAudioId: source.albumAudioId ?? track.albumAudioId,
+      };
+      const { queue } = playerStore.getState();
+      const nextQueue = [...queue];
+      if (nextQueue[index]) {
+        nextQueue[index] = effectiveTrack;
+      }
+      playerStore.setState({ track: effectiveTrack, queue: nextQueue });
+      // 预取用的是换源前 hash，作废后按有效 hash 重取歌词
+      lyricRun += 1;
+      loadLyricsFor(effectiveTrack, sequence);
+    }
+
     const player = ensureAudioPlayer();
     player.replace({ uri: source.uri });
+    currentSourceUri = source.uri;
+    currentBitrate = source.bitrate ?? null;
     // 每次换曲重新激活即可同步刷新锁屏元数据;Android 侧同时启动前台服务,
     // 保证息屏后台连续播放不受系统 3 分钟限制。
-    player.setActiveForLockScreen(true, lockScreenMetadataFor(track), LOCK_SCREEN_OPTIONS);
+    player.setActiveForLockScreen(true, lockScreenMetadataFor(effectiveTrack), LOCK_SCREEN_OPTIONS);
     if (options?.autoplay !== false) {
       player.play();
     }
 
     failStreak = 0;
+    loadingSince = 0;
     playerStore.setState({ loading: false });
     if (source.durationMs > 0) {
       progressStore.setState({ durationMs: source.durationMs });
@@ -225,6 +283,7 @@ async function loadTrackAt(index: number, options?: { autoplay?: boolean }) {
     }
 
     failStreak += 1;
+    loadingSince = 0;
     playerStore.setState({
       loading: false,
       playing: false,
@@ -244,22 +303,28 @@ async function loadTrackAt(index: number, options?: { autoplay?: boolean }) {
   }
 }
 
-async function loadLyricsFor(track: PlayerTrack, sequence: number) {
-  try {
-    const lines = await loadLyricLines(track);
-    if (sequence !== loadSequence) {
-      return;
-    }
+/** 歌词加载的独立代际：换源导致 hash 变化时重取，作废旧 hash 的在途结果。 */
+let lyricRun = 0;
 
-    playerStore.setState({
-      lyrics: lines,
-      lyricsStatus: lines.length ? 'ready' : 'empty',
-    });
-  } catch {
-    if (sequence === loadSequence) {
-      playerStore.setState({ lyrics: [], lyricsStatus: 'empty' });
+function loadLyricsFor(track: PlayerTrack, sequence: number) {
+  const run = lyricRun;
+  void (async () => {
+    try {
+      const lines = await loadLyricLines(track);
+      if (run !== lyricRun || sequence !== loadSequence) {
+        return;
+      }
+
+      playerStore.setState({
+        lyrics: lines,
+        lyricsStatus: lines.length ? 'ready' : 'empty',
+      });
+    } catch {
+      if (run === lyricRun && sequence === loadSequence) {
+        playerStore.setState({ lyrics: [], lyricsStatus: 'empty' });
+      }
     }
-  }
+  })();
 }
 
 async function skip(step: 1 | -1, auto = false) {
@@ -283,9 +348,8 @@ export const playerActions = {
       return;
     }
 
-    const sequence = loadSequence;
     playerStore.setState({ lyricsStatus: 'loading' });
-    await loadLyricsFor(track, sequence);
+    loadLyricsFor(track, loadSequence);
   },
 
   /**
@@ -362,11 +426,17 @@ export const playerActions = {
 
   toggle() {
     const { track, playing, loading, error } = playerStore.getState();
-    if (!track || loading) {
+    if (!track) {
       return;
     }
 
-    if (error) {
+    if (loading && Date.now() - loadingSince < STALE_LOADING_MS) {
+      return;
+    }
+
+    // error 态（含音源失效）与挂死超时的 loading 都重新走取链：
+    // 对已经失效的 source 调用 play() 不会产生任何效果。
+    if (error || loading) {
       void loadTrackAt(playerStore.getState().index);
       return;
     }
@@ -392,6 +462,64 @@ export const playerActions = {
     void skip(-1);
   },
 
+  /**
+   * 切换音质并立即对当前歌曲生效：换新音源后跳回原进度继续播，
+   * 不从头开始；云盘歌曲与解析失败时保持现状。
+   */
+  async applyQuality(quality: QualityId) {
+    settingsActions.setQuality(quality);
+
+    const state = playerStore.getState();
+    if (!state.track || state.track.source === 'cloud' || state.loading) {
+      return;
+    }
+
+    const sequence = loadSequence;
+
+    try {
+      const source = await resolveSongSource(state.track, quality);
+      if (
+        // 期间已切歌/清空队列：新曲目的加载流程自己管理 loading，这里不插手，
+        // 否则会把别的音源塞进 player 并把 loading 卡死。
+        sequence !== loadSequence ||
+        !source.uri ||
+        source.uri === currentSourceUri ||
+        // 酷狗对非会员各档位都返回同一试听码率：内容没变就不要打断播放。
+        (source.bitrate != null && currentBitrate != null && source.bitrate === currentBitrate)
+      ) {
+        return;
+      }
+
+      const player = ensureAudioPlayer();
+      const { positionMs } = progressStore.getState();
+      const wasPlaying = state.playing;
+
+      loadingSince = Date.now();
+      playerStore.setState({ loading: true, error: '' });
+      player.replace({ uri: source.uri });
+      currentSourceUri = source.uri;
+      currentBitrate = source.bitrate ?? currentBitrate;
+      // 换源后给原生层一点加载时间再跳进度，避免 seek 落空回到 0。
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await player.seekTo(positionMs / 1000);
+      progressStore.setState({ positionMs, positionUpdatedAt: Date.now() });
+      if (wasPlaying) {
+        player.play();
+      } else {
+        player.pause();
+      }
+      if (sequence === loadSequence) {
+        playerStore.setState({ loading: false });
+      }
+    } catch {
+      // 换源失败静默保留当前播放，用户可继续用原音质听；但 loading 必须复位，
+      // 否则 toggle() 会被 loading 拦截挡住，播放键永久失效。
+      if (sequence === loadSequence) {
+        playerStore.setState({ loading: false });
+      }
+    }
+  },
+
   seekToMs(positionMs: number) {
     const { track } = playerStore.getState();
     if (!track || !audioPlayer) {
@@ -400,7 +528,7 @@ export const playerActions = {
 
     const { durationMs } = progressStore.getState();
     const clamped = Math.max(0, durationMs > 0 ? Math.min(positionMs, durationMs) : positionMs);
-    progressStore.setState({ positionMs: clamped });
+    progressStore.setState({ positionMs: clamped, positionUpdatedAt: Date.now() });
     void audioPlayer.seekTo(clamped / 1000);
   },
 
@@ -458,6 +586,8 @@ export const playerActions = {
       advanceTimer = null;
     }
 
+    currentSourceUri = null;
+    currentBitrate = null;
     audioPlayer?.pause();
     audioPlayer?.clearLockScreenControls();
     playerStore.setState({

@@ -8,6 +8,7 @@ import { useHasTrack } from '@/features/player/store';
 export function useDockContentInset(): number {
   const insets = useSafeAreaInsets();
   const hasTrack = useHasTrack();
+  const miniPlayerInset = hasTrack ? MINI_PLAYER_HEIGHT + 12 : 0;
 
-  return insets.bottom + TabBarHeight + (hasTrack ? MINI_PLAYER_HEIGHT + 10 : 0) + 20;
+  return insets.bottom + TabBarHeight + miniPlayerInset + 20;
 }

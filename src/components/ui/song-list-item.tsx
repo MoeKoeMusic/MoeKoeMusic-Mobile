@@ -34,7 +34,7 @@ export const SongListItem = memo(function SongListItem({
       borderRadius={16}
       backgroundColor={active ? palette.accentSoft : 'transparent'}
       transition="quickest"
-      pressStyle={{ opacity: 0.65, scale: 0.985 }}
+      pressStyle={{ opacity: 0.72 }}
       onPress={onPress}
       onLongPress={onMore}>
       {typeof rank === 'number' ? (

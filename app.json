@@ -2,26 +2,18 @@
   "expo": {
     "name": "MoeKoe",
     "slug": "moekoe",
-    "version": "1.1.0",
-    "orientation": "portrait",
+    "version": "1.1.1",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "moekoe",
     "userInterfaceStyle": "automatic",
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/b40e70cf-7d4b-4a09-8f1d-c17b730e6d96",
-      "requestHeaders": {
-        "expo-channel-name": "production"
-      },
-      "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0
-    },
     "ios": {
       "bundleIdentifier": "cn.moekoe.music",
-      "buildNumber": "1.1.0",
-      "supportsTablet": false,
+      "buildNumber": "1.1.1",
+      "supportsTablet": true,
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
@@ -33,7 +25,7 @@
     },
     "android": {
       "package": "cn.moekoe.music",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#F6F9FF",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
@@ -81,7 +73,10 @@
         }
       ],
       "expo-video",
-      "expo-asset"
+      "expo-asset",
+      "expo-image",
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

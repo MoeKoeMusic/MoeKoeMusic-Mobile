@@ -3,39 +3,29 @@ import { Tabs } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Keyboard, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, YStack } from 'tamagui';
 
 import { MiniPlayer } from '@/components/ui/mini-player';
-import { TabBarHeight, TabBarSideMargin } from '@/constants/layout';
+import {
+  TabBarHeight,
+  TabBarSideMargin,
+  TabletDockMaxWidth,
+  TabletTabBarMaxWidth,
+} from '@/constants/layout';
+import { useIsTablet } from '@/hooks/use-is-tablet';
 import { useIsDark, usePalette } from '@/hooks/use-palette';
 
 type TabGlyph = 'home' | 'compass' | 'person';
 
-function TabItem({
-  focused,
-  glyph,
-  label,
-}: {
-  focused: boolean;
-  glyph: TabGlyph;
-  label: string;
-}) {
-  const palette = usePalette();
-  const tint = focused ? palette.accent : palette.textTertiary;
-
-  return (
-    <YStack alignItems="center" justifyContent="center" gap={3} minWidth={58} paddingTop={4}>
-      <Ionicons name={focused ? glyph : (`${glyph}-outline` as const)} size={22} color={tint} />
-      <Text color={tint} fontSize={10.5} fontWeight={focused ? '700' : '600'}>
-        {label}
-      </Text>
-    </YStack>
-  );
-}
+const TAB_ROUTES: { name: string; title: string; glyph: TabGlyph; label: string }[] = [
+  { name: 'index', title: '首页', glyph: 'home', label: '首页' },
+  { name: 'discover', title: '发现', glyph: 'compass', label: '发现' },
+  { name: 'me', title: '我的', glyph: 'person', label: '我的' },
+];
 
 export default function TabsLayout() {
   const palette = usePalette();
   const isDark = useIsDark();
+  const isTablet = useIsTablet();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -52,8 +42,16 @@ export default function TabsLayout() {
     };
   }, []);
 
-  const barHeight = TabBarHeight + insets.bottom;
-  const dockWidth = Math.min(width - TabBarSideMargin * 2, 680);
+  const barHeight = isTablet ? TabBarHeight : TabBarHeight + insets.bottom;
+
+  // 平板：导航条是居中悬浮胶囊，MiniPlayer 悬浮在其上方；手机：沿用全宽底部栏
+  const tabBarWidth = isTablet ? Math.min(width - 48, TabletTabBarMaxWidth) : width;
+  const tabBarLeft = (width - tabBarWidth) / 2;
+  const tabBarBottom = isTablet ? insets.bottom + 10 : 0;
+
+  const dockWidth = Math.min(width - TabBarSideMargin * 2, isTablet ? TabletDockMaxWidth : 680);
+  const dockLeft = (width - dockWidth) / 2;
+  const dockBottom = tabBarBottom + barHeight + 8;
 
   return (
     <View style={styles.root}>
@@ -61,46 +59,50 @@ export default function TabsLayout() {
         screenOptions={{
           headerShown: false,
           sceneStyle: { backgroundColor: palette.background },
-          tabBarShowLabel: false,
+          tabBarShowLabel: true,
+          tabBarActiveTintColor: palette.accent,
+          tabBarInactiveTintColor: palette.textTertiary,
+          tabBarPosition: 'bottom',
           tabBarHideOnKeyboard: true,
+          tabBarLabelStyle: {
+            fontSize: 10.5,
+            fontWeight: '600',
+          },
           tabBarStyle: {
             position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
+            left: tabBarLeft,
+            width: tabBarWidth,
+            bottom: tabBarBottom,
             height: barHeight,
-            borderTopWidth: 0,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: palette.border,
             backgroundColor: palette.barSurface,
+            borderRadius: isTablet ? 28 : 0,
+            borderColor: isTablet ? palette.border : undefined,
+            borderWidth: isTablet ? StyleSheet.hairlineWidth : 0,
             shadowColor: palette.dockShadow,
             shadowOffset: { width: 0, height: 10 },
-            shadowOpacity: isDark ? 0.45 : 0.12,
+            shadowOpacity: isDark ? 0.45 : 0.08,
             shadowRadius: 22,
-            elevation: 10,
-            paddingTop: 6,
-            paddingBottom: insets.bottom,
+            elevation: isTablet ? 12 : 10,
           },
         }}>
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: '首页',
-            tabBarIcon: ({ focused }) => <TabItem focused={focused} glyph="home" label="首页" />,
-          }}
-        />
-        <Tabs.Screen
-          name="discover"
-          options={{
-            title: '发现',
-            tabBarIcon: ({ focused }) => <TabItem focused={focused} glyph="compass" label="发现" />,
-          }}
-        />
-        <Tabs.Screen
-          name="me"
-          options={{
-            title: '我的',
-            tabBarIcon: ({ focused }) => <TabItem focused={focused} glyph="person" label="我的" />,
-          }}
-        />
+        {TAB_ROUTES.map((tab) => (
+          <Tabs.Screen
+            key={tab.name}
+            name={tab.name}
+            options={{
+              title: tab.title,
+              tabBarIcon: ({ focused, color }) => (
+                <Ionicons
+                  name={focused ? tab.glyph : (`${tab.glyph}-outline` as const)}
+                  size={isTablet ? 25 : 23}
+                  color={color}
+                />
+              ),
+            }}
+          />
+        ))}
       </Tabs>
 
       {keyboardVisible ? null : (
@@ -109,9 +111,9 @@ export default function TabsLayout() {
           style={[
             styles.dock,
             {
-              bottom: barHeight + 8,
+              bottom: dockBottom,
+              left: dockLeft,
               width: dockWidth,
-              marginLeft: (width - dockWidth) / 2,
             },
           ]}>
           <MiniPlayer />
@@ -127,6 +129,5 @@ const styles = StyleSheet.create({
   },
   dock: {
     position: 'absolute',
-    left: 0,
   },
 });

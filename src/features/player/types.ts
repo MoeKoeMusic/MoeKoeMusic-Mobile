@@ -19,9 +19,20 @@ export type PlayerTrack = {
 
 export type PlayMode = 'sequence' | 'shuffle' | 'single';
 
+/** 逐字时间轴（KRC）里的单个字；只有 KRC 源才填充 words。 */
+export type LyricWord = {
+  timeMs: number;
+  durationMs: number;
+  text: string;
+};
+
 export type LyricLine = {
   timeMs: number;
   text: string;
+  durationMs?: number;
+  words?: LyricWord[];
+  /** 该行翻译歌词（外国歌曲才有，来自 KRC 内嵌 [language:] 数据）。 */
+  translation?: string;
 };
 
 export type LyricsStatus = 'idle' | 'loading' | 'ready' | 'empty';

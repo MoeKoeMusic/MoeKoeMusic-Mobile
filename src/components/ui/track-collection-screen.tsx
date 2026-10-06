@@ -10,6 +10,7 @@ import { Artwork } from '@/components/ui/artwork';
 import { MiniPlayer, MINI_PLAYER_HEIGHT } from '@/components/ui/mini-player';
 import { SongListItem } from '@/components/ui/song-list-item';
 import { TrackActionsSheet } from '@/components/ui/track-actions-sheet';
+import { withAlpha } from '@/constants/accents';
 import { MaxContentWidth } from '@/constants/theme';
 import { playCollection } from '@/features/player/play-collection';
 import { useHasTrack, usePlayer } from '@/features/player/store';
@@ -150,7 +151,7 @@ export function TrackCollectionScreen({
   return (
     <View flex={1} backgroundColor={palette.background}>
       <LinearGradient
-        colors={[isDark ? 'rgba(255, 126, 182, 0.16)' : 'rgba(255, 92, 158, 0.14)', 'transparent']}
+        colors={[withAlpha(palette.accent, isDark ? 0.16 : 0.12), 'transparent']}
         style={styles.headerGlow}
       />
 
