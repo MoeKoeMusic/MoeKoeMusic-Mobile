@@ -13,6 +13,7 @@ type LyricsViewProps = {
   lines: LyricLine[];
   status: LyricsStatus;
   onSeekLine?: (line: LyricLine) => void;
+  onRetry?: () => void;
 };
 
 const RESUME_AUTO_SCROLL_MS = 3500;
@@ -55,7 +56,7 @@ const LyricRow = memo(function LyricRow({
   );
 });
 
-export function LyricsView({ lines, status, onSeekLine }: LyricsViewProps) {
+export function LyricsView({ lines, status, onSeekLine, onRetry }: LyricsViewProps) {
   const palette = usePalette();
   const scrollRef = useRef<ScrollView>(null);
   const lineOffsets = useRef<number[]>([]);
@@ -100,6 +101,25 @@ export function LyricsView({ lines, status, onSeekLine }: LyricsViewProps) {
     );
   }
 
+  if (status === 'error') {
+    return (
+      <YStack
+        flex={1}
+        alignItems="center"
+        justifyContent="center"
+        gap={6}
+        pressStyle={{ opacity: 0.65 }}
+        onPress={onRetry}>
+        <Text color={palette.textSecondary} fontSize={16} fontWeight="600">
+          歌词加载失败
+        </Text>
+        <Text color={palette.textTertiary} fontSize={12.5}>
+          点击重试
+        </Text>
+      </YStack>
+    );
+  }
+
   if (!lines.length) {
     return (
       <YStack flex={1} alignItems="center" justifyContent="center" gap={6}>
@@ -107,7 +127,7 @@ export function LyricsView({ lines, status, onSeekLine }: LyricsViewProps) {
           暂无歌词
         </Text>
         <Text color={palette.textTertiary} fontSize={12.5}>
-          纯音乐，请欣赏
+          暂未找到匹配歌词
         </Text>
       </YStack>
     );

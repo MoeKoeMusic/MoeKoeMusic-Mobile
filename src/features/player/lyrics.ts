@@ -16,31 +16,23 @@ function toRecords(value: unknown): UnknownRecord[] {
   return value.filter((item): item is UnknownRecord => Boolean(item) && typeof item === 'object');
 }
 
-const LRC_LINE = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
+const KRC_LINE = /^\[(\d+),\d+\](.*)$/;
+const KRC_WORD = /<\d+,\d+,\d+>/g;
 
-export function parseLrc(content: string): LyricLine[] {
+export function parseKrc(content: string): LyricLine[] {
   const lines: LyricLine[] = [];
 
   for (const rawLine of content.split(/\r?\n/)) {
-    const text = rawLine.replace(LRC_LINE, '').trim();
-    LRC_LINE.lastIndex = 0;
-
-    let match: RegExpExecArray | null;
-    while ((match = LRC_LINE.exec(rawLine)) !== null) {
-      const minutes = Number(match[1]);
-      const seconds = Number(match[2]);
-      const fractionRaw = match[3] ?? '0';
-      const fraction = Number(fractionRaw) * (fractionRaw.length === 3 ? 1 : 10);
-
-      if (!Number.isFinite(minutes) || !Number.isFinite(seconds)) {
-        continue;
-      }
-
-      if (text) {
-        lines.push({ timeMs: minutes * 60000 + seconds * 1000 + fraction, text });
-      }
+    const match = rawLine.match(KRC_LINE);
+    if (!match) {
+      continue;
     }
-    LRC_LINE.lastIndex = 0;
+
+    const timeMs = Number(match[1]);
+    const text = match[2].replace(KRC_WORD, '').trim();
+    if (Number.isFinite(timeMs) && text) {
+      lines.push({ timeMs, text });
+    }
   }
 
   return lines
@@ -48,32 +40,30 @@ export function parseLrc(content: string): LyricLine[] {
     .filter((line, index, list) => index === 0 || line.timeMs !== list[index - 1].timeMs || line.text !== list[index - 1].text);
 }
 
-/** 歌词两段式获取：先按 hash 搜索候选，再下载解码为 LRC。 */
+/** 与桌面端一致：按 hash 搜索首个候选，再下载解码 KRC。 */
 export async function loadLyricLines(track: PlayerTrack): Promise<LyricLine[]> {
-  const searchResponse = await mobileApi.search_lyric({
-    hash: track.hash,
-    album_audio_id: track.albumAudioId ?? 0,
-  });
+  const searchResponse = await mobileApi.search_lyric({ hash: track.hash });
+  if (searchResponse.status !== 200) {
+    throw new Error('歌词搜索失败');
+  }
 
-  const candidates = toRecords(toRecord(searchResponse.body).candidates);
-  const candidate = candidates[0];
-  if (!candidate || !candidate.id || !candidate.accesskey) {
+  const candidate = toRecords(toRecord(searchResponse.body).candidates)[0];
+  if (!candidate?.id || !candidate.accesskey) {
     return [];
   }
 
   const lyricResponse = await mobileApi.lyric({
-    id: candidate.id,
-    accesskey: candidate.accesskey,
-    fmt: 'lrc',
+    id: String(candidate.id),
+    accesskey: String(candidate.accesskey),
+    fmt: 'krc',
     decode: true,
   });
-
   const content = toRecord(lyricResponse.body).decodeContent;
-  if (typeof content !== 'string' || !content.trim()) {
-    return [];
+  if (lyricResponse.status !== 200 || typeof content !== 'string') {
+    throw new Error('歌词获取失败');
   }
 
-  return parseLrc(content);
+  return parseKrc(content);
 }
 
 export function findActiveLyricIndex(lines: LyricLine[], positionMs: number): number {

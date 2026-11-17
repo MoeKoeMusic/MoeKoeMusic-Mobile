@@ -120,7 +120,7 @@ function ensureAudioPlayer(): AudioPlayer {
   void setAudioModeAsync({
     playsInSilentMode: true,
     shouldPlayInBackground: true,
-    interruptionMode: 'doNotMix',
+    interruptionMode: 'mixWithOthers',
   });
 
   return audioPlayer;
@@ -257,7 +257,7 @@ async function loadLyricsFor(track: PlayerTrack, sequence: number) {
     });
   } catch {
     if (sequence === loadSequence) {
-      playerStore.setState({ lyrics: [], lyricsStatus: 'empty' });
+      playerStore.setState({ lyrics: [], lyricsStatus: 'error' });
     }
   }
 }
@@ -279,7 +279,7 @@ export function isCurrentQueueGeneration(expected: number): boolean {
 export const playerActions = {
   async loadLyrics() {
     const { track, lyricsStatus } = playerStore.getState();
-    if (!track || lyricsStatus !== 'idle') {
+    if (!track || (lyricsStatus !== 'idle' && lyricsStatus !== 'error')) {
       return;
     }
 

@@ -24,4 +24,4 @@ export type LyricLine = {
   text: string;
 };
 
-export type LyricsStatus = 'idle' | 'loading' | 'ready' | 'empty';
+export type LyricsStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';

@@ -43,7 +43,7 @@ const PLAYBACK_AUDIO_MODE = {
   allowsRecording: false,
   playsInSilentMode: true,
   shouldPlayInBackground: true,
-  interruptionMode: 'doNotMix',
+  interruptionMode: 'mixWithOthers',
 } as const;
 
 const RECORDING_AUDIO_MODE = {

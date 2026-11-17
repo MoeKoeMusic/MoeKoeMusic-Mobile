@@ -331,6 +331,7 @@ export default function PlayerScreen() {
                 lines={lyrics}
                 status={lyricsStatus}
                 onSeekLine={handleSeekLine}
+                onRetry={() => void playerActions.loadLyrics()}
               />
             ) : null}
           </YStack>
